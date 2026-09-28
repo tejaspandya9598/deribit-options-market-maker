@@ -1,0 +1,25 @@
+[project]
+name = "deribit-options-market-maker"
+version = "0.1.0"
+description = "Market-making simulator for Deribit BTC options: public-data recorder, C++20 replay engine, local paper-trading dashboard."
+readme = "docs/SPEC.md"
+requires-python = ">=3.14"
+dependencies = [
+    "websockets>=17.1",   # Deribit public websocket (recorder, live feed)
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

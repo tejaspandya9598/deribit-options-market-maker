@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.25)
+project(deribit_mm LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+add_compile_options(-Wall -Wextra -Wpedantic)
+
+# Engine code shared by the executable and the tests. Header-only for now; sources land here from M2.
+add_library(mm_core INTERFACE)
+target_include_directories(mm_core INTERFACE engine/src)
+
+add_executable(mm_engine engine/src/main.cpp)
+target_link_libraries(mm_engine PRIVATE mm_core)
+
+# Vendored header-only libraries.
+add_library(doctest INTERFACE)
+target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
+
+# Any .cpp under engine/tests/ is picked up.
+enable_testing()
+file(GLOB_RECURSE ENGINE_TEST_SOURCES CONFIGURE_DEPENDS engine/tests/*.cpp)
+add_executable(engine_tests ${ENGINE_TEST_SOURCES})
+target_link_libraries(engine_tests PRIVATE mm_core doctest)
+add_test(NAME engine_tests COMMAND engine_tests)

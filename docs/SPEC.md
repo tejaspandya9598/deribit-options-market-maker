@@ -1,0 +1,144 @@
+# SPEC: Deribit BTC options market maker (simulator + paper cockpit)
+
+## 1. Goal
+Build a portfolio project that shows how BTC option market-making strategies would have done on Deribit, both on recorded market data and live on paper.
+
+- A C++20 engine replays recorded Deribit order books and trades. It runs one or more quoting strategies side by side, simulates fills, hedges delta with the BTC perpetual, and reports PnL honestly.
+- The same engine also runs live, fed by Deribit's public websocket. It still trades only on paper.
+- A local web dashboard lets you pick strategies and hedgers and watch them trade, live or in replay. Its main use is recording a demo video (LinkedIn etc.).
+- If a strategy loses money after fees and adverse selection, that is a valid result and we report it as one.
+
+## 2. Rules
+- **Paper money only.** No account, no API key, no auth call, no order routing. Every trade is a simulated fill against a recorded or live public order book.
+- **Zero cost.** Public endpoints only; nothing hosted; everything runs locally.
+- **Few dependencies:** nlohmann/json and doctest (C++, vendored), websockets (Python), uPlot (JS, vendored), and `sabr-vol-calibration` (which brings numpy and scipy).
+- **Honesty about numbers.** Every figure carries its conditions: instruments, dates, strategy and parameters, hedger, fill model, latency, fee schedule date, fair-value source. A losing market maker after fees and adverse selection is a valid result and is reported as one.
+- **`data/` holds raw recordings only.** Only the recorder writes there.
+
+## 3. Inputs / data sources
+All market data comes from Deribit's public websocket API (`wss://www.deribit.com/ws/api/v2`). BTC only.
+
+- **Instrument list:** `public/get_instruments` (BTC options). This gives strike, expiry, tick size and contract size. Refreshed every hour so new expiries get picked up.
+- **Universe:** BTC options in the 2–3 nearest expiries, with strikes near the money (about ±15% of the index, capped at ~20 strikes per expiry), plus BTC-PERPETUAL for hedging.
+- **Channels recorded:**
+  - `book.{instrument}.100ms`: full-depth book, sent as a snapshot followed by changes. Gaps are detected with `change_id` / `prev_change_id`. The tick-by-tick `raw` book needs a login, so we don't use it.
+  - `trades.{instrument}.100ms`: public trades.
+  - `ticker.{instrument}.100ms`: mark price, mark IV, bid/ask IV, Deribit's Greeks, underlying (forward) and index price.
+  - `deribit_price_index.btc_usd`: the index, used for settlement.
+- **Latency probe:** every 5 seconds (on a fixed schedule, so the acceptance bound of 10 s holds with margin) the recorder times a round trip of `public/test` on the same connection and logs it. The lowest round trip seen, divided by two, is our best-case one-way latency.
+- **Stored format:** the raw Deribit messages, one JSON object per line, gzipped. Files rotate hourly: `data/raw/YYYY-MM-DD/HH.jsonl.gz`. Each line also gets the local receive time in nanoseconds.
+- **Recorder log:** reconnects, detected gaps, resubscriptions, heartbeat misses and latency probes go to a separate log. The report quotes these, so data holes are visible.
+- **Dataset for headline results:** 7 continuous days of BTC recording.
+- **Fees:** Deribit's public fee schedule (options and perpetual, maker and taker, delivery fee). The exact numbers and the date we checked them live in `config/fees.json` and are printed in every report.
+
+## 4. Outputs
+- **Run folder** `runs/<run_id>/`. Nothing is ever written into `data/` except by the recorder.
+  - `config.json`: every setting, including input files, strategies, hedgers and latency.
+  - For each account (one strategy + one hedger): `fills.csv`, `pnl.csv`, `summary.json`.
+  - `pnl.csv` splits PnL into spread earned, fees, option mark-to-market, hedge PnL and adverse selection (markouts).
+- **SABR fit cache** `cache/sabr/YYYY-MM-DD.jsonl.gz`: fitted parameters per expiry over time, computed once per recorded day and reused by every replay.
+- **Results table:** built by a Python script from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model, latency, fee schedule date, fair-value source.
+- **Local dashboard** at `http://localhost:<port>`, with four tabs:
+  - **Live:** current books, each account's quotes, fills, positions, Greeks (delta, vega, gamma) and PnL.
+  - **Replay:** the same screen driven by a recorded day at 1x–100x speed.
+  - **Strategies:** pick one or more strategies and set their parameters, pick a hedger for each, pick fill model and latency, then start a session.
+  - **Results:** the results table and charts.
+
+## 5. In scope / out of scope
+**In scope**
+- Python recorder with reconnect, heartbeat, gap detection and latency probe.
+- C++ engine: event loop, book rebuild, pricing, strategies, fill simulation, hedging, per-account PnL.
+- Pricing in C++: Black-76 prices and Greeks, implied-vol solver, and Hagan's SABR vol formula (for moving the smile with the forward between fits).
+- SABR calibration by reusing `sabr-vol-calibration` through a Python sidecar.
+- Deribit mark IV as a second fair-value source, compared against SABR.
+- 4 built-in strategies: fixed spread, inventory-skewed (Avellaneda–Stoikov), join-the-best with an edge filter, mark-IV follower.
+- 4 hedgers: no hedge, fixed delta band, time-based, Whalley–Wilmott band.
+- Several strategies at once, each with its own paper account.
+- 2 fill models (optimistic, queue-aware), switchable.
+- Latency default = lowest measured, plus a sweep.
+- Local dashboard with Live, Replay, Strategies and Results tabs.
+- Test setup (doctest for C++, pytest for Python) and Ruff lint.
+
+**Out of scope (now)**
+- Any real trading, account, API key or authenticated endpoint.
+- Hosting of any kind (Pages, cloud, VPS).
+- ETH, far expiries, the full option chain.
+- Our orders moving the market. Recorded books are replayed as they were, and side-by-side accounts don't see each other's orders. Both are stated as known limits.
+- Deribit's market-maker protection, block trades, combos, portfolio margin.
+- Hedging with anything other than BTC-PERPETUAL.
+
+**Future features (not planned yet)**
+- Custom strategies added by the user (the C++ strategy interface is written with this in mind).
+- Machine-learning signals.
+
+## 6. Key methods
+**Event loop.** The engine reads JSON lines from stdin, so replay is `gunzip -c ... | engine --fits cache/sabr/DAY.jsonl.gz` and live is `python live/feed.py | engine`. All logic uses exchange timestamps. A strategy only sees an event after `event_time + latency`, and its orders reach the "exchange" after a further `latency`. This rules out look-ahead by design.
+
+**Order book.** The book is rebuilt from the snapshot plus changes. If `prev_change_id` doesn't match, the instrument is marked stale and we stop quoting it until the next snapshot. Quotes are also pulled if an instrument sees no update for N seconds.
+
+**Pricing (C++).** Black-76 on the forward, using Deribit's underlying price for each expiry. Implied volatility is solved with Newton's method, falling back to bisection. Greeks are computed in closed form. Prices are kept in BTC, converted to USD only for reporting.
+
+**Smile fit (reusing sabr-vol-calibration):**
+- Small changes in the sabr repo: make it installable as a package (it has `package = false` today), add optional per-strike weights to `calibrate()`, move matplotlib/requests to an optional extra. Then tag a version. This project depends on it as a pinned git dependency.
+- A Python sidecar calls `sabr.calibration.calibrate` for each expiry every few seconds. Inputs:
+  - out-of-the-money mid IVs from the ticker's bid/ask IV,
+  - weights set by 1 / IV spread,
+  - the forward from the ticker,
+  - a warm start from the previous fit.
+- Each fit only uses data up to its own timestamp. Its result reaches the engine at `fit_time + measured fit compute time`.
+- Between fits, C++ re-evaluates Hagan's formula (a port of `sabr/model.py`'s `hagan_lognormal_vol`) as the forward moves.
+- β is fixed. Both 0.5 and 1.0 are tried on recorded data, and the one with lower fit error is chosen and documented.
+- For replay, fits are computed once per day and cached. For live, the sidecar feeds them straight into the engine's input.
+- Fit error against Deribit mark IV is reported.
+
+**Strategies.** Each built-in strategy sets bid/ask quotes on a chosen set of near-money options, in small size. All are rounded to the tick.
+- *Fixed spread:* SABR fair IV ± a fixed half-spread in vol points.
+- *Inventory-skewed (Avellaneda–Stoikov style):* the quote centre moves against our vega inventory (`centre = fair IV − k · vega_position`), and the spread widens with inventory and recent volatility.
+- *Join-the-best with edge filter:* quote at the current best bid/ask, but only when that price is at least X vol points on the right side of SABR fair value. Otherwise stay out.
+- *Mark-IV follower:* fixed spread centred on Deribit mark IV instead of SABR, which turns the fair-value comparison into a strategy choice.
+- *Shared risk limits:* max contracts per option and max total vega. Quotes are pulled on stale data and in the last hour before expiry.
+
+**Running several strategies.** Each selected strategy runs in its own paper account with its own hedger, on the same market data. Accounts don't compete for fills, which is a stated limit. One engine run can hold many accounts, e.g. all 4 strategies × 4 hedgers = 16 accounts in one pass.
+
+**Hedgers** (one per account; all trade BTC-PERPETUAL as taker against the recorded perp book and pay the taker fee):
+- *No hedge:* carry the delta, and report how much of the PnL it explains.
+- *Fixed band:* hedge back to zero when delta leaves ±X BTC.
+- *Time-based:* hedge to zero every N minutes.
+- *Whalley–Wilmott:* the band width comes from gamma, the fee rate and a risk-aversion setting. It is wider when trading costs more, narrower when you care more about risk.
+
+**Fill models:**
+- *Optimistic:* we get filled whenever a recorded trade prints at or through our price, up to the trade's size.
+- *Queue-aware:* our order joins the back of the queue at its price. Trades at that price use up the queue ahead of us first. Cancels at our level shrink the queue ahead of us in proportion to their size. A trade through our price fills us fully.
+
+**Latency.** The default is the lowest measured one-way latency from the recorder's probe (best case). The sweep also covers 10 / 25 / 50 / 75 / 100 / 250 ms and the measured median, so results show how much they depend on speed.
+
+**Accounting.** Each account tracks cash in BTC and positions marked to mid, applying fees on every fill. At expiry, options settle at the Deribit delivery price minus the delivery fee. PnL is split into spread, fees, hedge, option MTM and markouts (fill price vs mid 1s / 10s / 60s later). The markouts measure adverse selection.
+
+**Determinism.** Same input plus same config gives byte-identical output files.
+
+## 7. Acceptance criteria
+Each milestone is checked against these.
+
+1. **Recorder:** runs 7 days with reconnects logged. A check script rebuilds books from the raw files and matches a fresh REST `public/get_order_book` snapshot for at least 99% of sampled checks. Every gap appears in the log. The latency probe logs a value at least every 10 s while connected.
+2. **Book rebuild in C++:** for one recorded hour, the C++ top-of-book matches the Python check script at every event, for every instrument.
+3. **Pricing:** Black-76 prices and Greeks match reference values to 1e-8. The IV solver round-trips price → IV → price to 1e-10 over a grid of strikes, expiries and vols. Deep in/out-of-money cases return a clear "no solution" instead of NaN. The C++ Hagan formula matches `sabr.model.hagan_lognormal_vol` to 1e-12 on a grid, including near the money.
+4. **SABR:**
+   - The sabr repo's existing tests still pass after the changes.
+   - On recorded data, the fit error against Deribit mark IV (median and worst strike, in vol points) is reported for β = 0.5 and β = 1.0.
+   - No fit is used before `fit_time + compute time`.
+5. **Fill models:** scenario tests pass (queue ahead, partial fills, cancels ahead, trade-through, latency delaying a fill or cancel). The optimistic model never fills less than the queue-aware one on the same input.
+6. **Strategies and hedgers:** each passes scenario tests for its core rule. Examples: A-S shifts its quotes the right way with inventory; join-the-best stays out when the edge is too small; each hedger fires when, and only when, its rule says so.
+7. **No look-ahead:** an injected future event is never visible to a strategy before `time + latency`.
+8. **Accounting:** for every account at every step, cash + marked positions = starting equity + total PnL, and the PnL parts sum to the total (within 1e-9 BTC).
+9. **Determinism:** two runs with the same input and config produce identical files.
+10. **Speed:** one recorded day replays with all 16 accounts in under 5 minutes on the M2 Air. The target is checked in M2 and revised with the measured number if needed.
+11. **Results:** on the 7-day dataset:
+    - a table of 4 strategies × 2 fill models × the latency sweep (Whalley–Wilmott hedger);
+    - a hedger table of 4 strategies × 4 hedgers (queue-aware, default latency).
+    - Every row carries its conditions.
+12. **Dashboard:**
+    - The Strategies tab starts a session with any mix of the 4 strategies and 4 hedgers.
+    - Live mode runs 1 hour without crashing, with flat memory.
+    - Replay plays a recorded day at 1x–100x.
+    - A demo video can be recorded from it.
+13. **Honesty:** the README shows results after fees and adverse selection, whatever the sign, next to the known limits (no market impact, accounts don't compete, public-feed latency, fee date).

@@ -1,0 +1,15 @@
+# recorded data, fit cache, run outputs
+data/
+cache/
+runs/
+
+# build + python
+build/
+.venv/
+__pycache__/
+.ruff_cache/
+.pytest_cache/
+
+# local settings, macOS
+.env
+.DS_Store

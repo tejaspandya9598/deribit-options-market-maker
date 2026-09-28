@@ -1,0 +1,27 @@
+{
+  "date_checked": "2026-09-27",
+  "tier": "Standard (no VIP discount)",
+  "notes": "Rates are fractions of the underlying. Options fees are in BTC per 1-BTC contract. Sources: references/deribit/fees.md",
+  "option": {
+    "maker": 0.0003,
+    "taker": 0.0003,
+    "fee_cap_fraction_of_price": 0.125,
+    "formula": "fee = min(rate, 0.125 * option_price_btc) * contracts",
+    "source": "Deribit Support 'Fees' page (saved PDF) + public/get_instruments maker_commission/taker_commission"
+  },
+  "option_delivery": {
+    "by_settlement_period": {
+      "day": {"rate": 0.0, "cap_fraction_of_value": null},
+      "week": {"rate": 0.00015, "cap_fraction_of_value": 0.125},
+      "month": {"rate": 0.00015, "cap_fraction_of_value": 0.125}
+    },
+    "key": "settlement_period field of the instrument record from public/get_instruments",
+    "source": "Deribit Support 'Fees' page (saved PDF): daily options exempt; BTC options 0.015%, never above 12.5% of the option's value"
+  },
+  "perpetual": {
+    "instrument": "BTC-PERPETUAL",
+    "maker": 0.00015,
+    "taker": 0.00035,
+    "source": "Deribit Support 'Fees' page (saved PDF) + public/get_instrument maker_commission/taker_commission"
+  }
+}
