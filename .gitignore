@@ -13,3 +13,7 @@ __pycache__/
 # local settings, macOS
 .env
 .DS_Store
+
+# Copied third-party docs stay local (Deribit content); our own summaries are tracked
+references/deribit/*
+!references/deribit/fees.md
