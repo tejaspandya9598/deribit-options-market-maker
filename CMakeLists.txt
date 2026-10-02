@@ -26,9 +26,12 @@ add_library(mm_core STATIC
   engine/src/market_state.cpp
   engine/src/order_book.cpp
   engine/src/parse.cpp
+  engine/src/pricing.cpp
   engine/src/tob_dump.cpp
 )
 target_include_directories(mm_core PUBLIC engine/src)
+# No fused multiply-add in the Hagan port, so it rounds like the Python reference (sabr.model).
+set_source_files_properties(engine/src/pricing.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 target_link_libraries(mm_core PUBLIC nlohmann_json)
 
 add_executable(mm_engine engine/src/main.cpp)

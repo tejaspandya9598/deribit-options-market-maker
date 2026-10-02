@@ -6,6 +6,7 @@ readme = "docs/SPEC.md"
 requires-python = ">=3.14"
 dependencies = [
     "websockets>=17.1",   # Deribit public websocket (recorder, live feed)
+    "sabr-vol-calibration",  # SABR fits (sabr_sidecar); brings numpy + scipy
 ]
 
 [dependency-groups]
@@ -13,6 +14,10 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.uv]
 package = false
+
+# Pinned to the tagged release (branch release-0.2 on GitHub).
+[tool.uv.sources]
+sabr-vol-calibration = { git = "https://github.com/tejaspandya9598/sabr-vol-calibration", tag = "v0.2.0" }
 
 [tool.ruff]
 line-length = 100

@@ -33,11 +33,22 @@ Each milestone is built from its checklist, tested and reviewed against its "don
 **Done when:** replaying one recorded hour, the C++ top of book matches `check_book.py` at every event, two runs produce identical output, no event is visible before `time + latency`, and the time for one day is written down.
 
 ## M3: Pricing + SABR reuse
-- [ ] In the sabr repo: make it an installable package, add optional weights to `calibrate()`, move matplotlib/requests to an extra.
-- [ ] Add the tagged sabr repo as a pinned git dependency
-- [ ] `sabr_sidecar/fit.py`: per-expiry fits from recorded ticker data with warm start, stamped with compute time; builds `cache/sabr/DAY.jsonl.gz`
-- [ ] C++: Black-76 price + Greeks, IV solver, Hagan formula port
-- [ ] Report: SABR vs mark IV error for β = 0.5 and 1.0; pick β
+- [x] In the sabr repo: make it an installable package, add optional weights to `calibrate()`, move matplotlib/requests to an extra.
+- [x] Add the tagged sabr repo as a pinned git dependency (v0.2.0 on branch release-0.2; GitHub main untouched)
+- [x] `sabr_sidecar/fit.py`: per-expiry fits from recorded ticker data with warm start, stamped with compute time; builds `cache/sabr/beta-<β>/DAY.jsonl.gz`
+- [x] C++: Black-76 price + Greeks, IV solver, Hagan formula port
+- [x] Report: SABR vs mark IV error for β = 0.5 and 1.0; pick β
+  - **β = 0.5 chosen.** 2026-09-29 + 09-30 (recorded BTC options, 3 nearest expiries, ±15% strikes), fits every 5 s per expiry, OTM mid IVs weighted by 1/(bid-ask IV spread), ν ≤ 5/√T. Errors vs Deribit mark IV over the fitted strikes, median over 98,799 fits per β ([runs/sabr/beta_report.json](../runs/sabr/beta_report.json)):
+
+    | Metric (vol points) | β = 0.5 | β = 1.0 |
+    |---|---|---|
+    | Median strike error | 0.465 | 0.476 |
+    | Worst strike error: median / p95 / max | 2.15 / 4.19 / 7.68 | 2.23 / 4.33 / 7.85 |
+    | RMSE vs quoted mid | 0.806 | 0.831 |
+    | Fits at a ν or ρ bound | 0% | 0% |
+
+    β = 0.5 is better on every error measure, by a small margin. Median fit compute: ≈2 ms (β 0.5) vs ≈3 ms (β 1.0).
+  - The first attempt had ν capped at 5 (sabr's default, sized for ~1-year expiries): 99.99% of fits hit it and the median strike error was 1.85 vp. Short-dated smiles need ν on the order of 1/√T, hence `nu_max` = 5/√T.
 
 **Done when:** pricing meets the spec tolerances, C++ Hagan matches Python `hagan_lognormal_vol` on a grid, the sabr repo's own tests still pass, one recorded day has a fit cache, and the β comparison is written down.
 
