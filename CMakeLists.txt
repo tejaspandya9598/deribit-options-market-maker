@@ -12,16 +12,27 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-# Engine code shared by the executable and the tests. Header-only for now; sources land here from M2.
-add_library(mm_core INTERFACE)
-target_include_directories(mm_core INTERFACE engine/src)
-
-add_executable(mm_engine engine/src/main.cpp)
-target_link_libraries(mm_engine PRIVATE mm_core)
-
 # Vendored header-only libraries.
 add_library(doctest INTERFACE)
 target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json SYSTEM INTERFACE third_party)
+
+# Engine code shared by the executable and the tests.
+add_library(mm_core STATIC
+  engine/src/checkpoint.cpp
+  engine/src/event_loop.cpp
+  engine/src/input.cpp
+  engine/src/market_state.cpp
+  engine/src/order_book.cpp
+  engine/src/parse.cpp
+  engine/src/tob_dump.cpp
+)
+target_include_directories(mm_core PUBLIC engine/src)
+target_link_libraries(mm_core PUBLIC nlohmann_json)
+
+add_executable(mm_engine engine/src/main.cpp)
+target_link_libraries(mm_engine PRIVATE mm_core)
 
 # Any .cpp under engine/tests/ is picked up.
 enable_testing()

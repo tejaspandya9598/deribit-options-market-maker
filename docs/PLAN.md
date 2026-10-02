@@ -12,17 +12,23 @@ Each milestone is built from its checklist, tested and reviewed against its "don
 - [x] Hourly instrument refresh (new expiries in, expired out)
 - [x] `recorder/check_book.py`: rebuilds books from raw files and compares with a REST snapshot
 - [x] `config/fees.json`: fee schedule with the date checked
-- [ ] Start the 7-day recording (with `caffeinate` so the Mac doesn't sleep); note disk use per hour
-  - Disk use measured in the 65-min check run on 2026-09-27: about 25 MB per full hour (≈0.6 GB/day, ≈4.2 GB for 7 days) for 120 options + BTC-PERPETUAL.
+- [x] Start the 7-day recording (with `caffeinate` so the Mac doesn't sleep); note disk use per hour
+  - Disk use measured in the 65-min check run on 2026-09-27: about 25 MB per full hour (≈0.6 GB/day, ≈4.2 GB for 7 days) for 120 options + BTC-PERPETUAL. Busy daytime hours on 2026-09-28 ran 59–73 MB, so plan on ≈1–1.5 GB/day.
+  - Recording hole: the first long run died at 2026-09-28 19:29:00 UTC when the external HDD holding the project was unplugged. No data until 21:42:41 UTC.
+  - From 2026-09-28 21:42:41 UTC the recorder runs from the internal disk (copy of record.py in ~/deribit_recorder, data in ~/deribit_data, restart loop). The data goes back into `data/` on the HDD when recording ends.
+  - **Headline dataset: 7 continuous days, 2026-09-28 21:42:41 UTC → 2026-10-05 21:42:41 UTC.** Earlier recordings (2026-09-27 20:16 → 2026-09-28 19:29 UTC) are kept as extra data.
 
 **Done when:** the recorder has run for 1 hour, `check_book.py` matches REST snapshots in at least 99% of checks, latency probes appear in the log, and the long recording is running.
 
 ## M2: C++ core: events, books, clock
-- [ ] Event types (book snapshot/change, trade, ticker, index, SABR fit)
-- [ ] JSON-lines reader on stdin (nlohmann/json), plus a second time-merged input for the fit cache
-- [ ] Order book with snapshot + changes, gap detection, stale flag
-- [ ] Event loop with exchange-time clock and a latency queue for both directions
-- [ ] Top-of-book dump for comparison; time one full recorded day
+- [x] Event types (book snapshot/change, trade, ticker, index, SABR fit)
+- [x] JSON-lines reader on stdin (nlohmann/json), plus a second time-merged input for the fit cache
+- [x] Order book with snapshot + changes, gap detection, stale flag
+- [x] Event loop with exchange-time clock and a latency queue for both directions
+- [x] Top-of-book dump for comparison; time one full recorded day
+- [x] Hourly book checkpoints in `cache/books/` so a replay can start at any hour (added during M2)
+  - Day timing, 2026-09-29 (15.67M lines, 15.86M events): 120.0 s wall on the M2 Air, optimized build, no accounts, TOB to /dev/null, default latency 37.9 ms (lowest probe RTT 75.8 ms / 2). Leaves ~180 s of the SPEC 7.10 budget for 16 accounts; that target is checked in M4/M5.
+  - To check in M4: ~91% of events arrive with an exchange time behind the clock (late events 14.5M of 15.86M on 2026-09-29). Likely 100ms-batching across ~370 channels; measure how late before fills depend on it.
 
 **Done when:** replaying one recorded hour, the C++ top of book matches `check_book.py` at every event, two runs produce identical output, no event is visible before `time + latency`, and the time for one day is written down.
 

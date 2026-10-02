@@ -277,6 +277,55 @@ def test_verify_match_mismatch_unaligned_and_gap_before_target(tmp_path: Path) -
     ] == ["unexplained"]
 
 
+def test_tob_matches_engine_rebuild_rules_across_gaps_and_reconnects(tmp_path: Path) -> None:
+    source = tmp_path / "book.jsonl"
+    output = tmp_path / "tob.csv"
+    rows = [
+        {"recv_ns": 1, "msg": json.loads(_book_msg(
+            "snapshot", 10, bids=[["new", 10, 1]], asks=[["new", 11, 2]]
+        ))},
+        {"recv_ns": 2, "msg": json.loads(_book_msg(
+            "change", 11, prev=10, bids=[["change", 10, 3]]
+        ))},
+        {"recv_ns": 3, "msg": json.loads(_book_msg(
+            "change", 13, prev=12, bids=[["change", 10, 4]]
+        ))},
+        {"recv_ns": 4, "msg": json.loads(_book_msg(
+            "change", 14, prev=13, bids=[["change", 10, 5]]
+        ))},
+        {"recv_ns": 5, "event": {"type": "connect"}},
+        {"recv_ns": 6, "msg": json.loads(_book_msg(
+            "change", 15, prev=14, bids=[["change", 10, 6]]
+        ))},
+        {"recv_ns": 7, "msg": json.loads(_book_msg(
+            "snapshot", 20, bids=[["new", 9, 7]], asks=[["new", 12, 8]]
+        ))},
+        {"recv_ns": 8, "msg": json.loads(_book_msg(
+            "change", 21, prev=20, asks=[["delete", 12, 0]]
+        ))},
+        {"recv_ns": 9, "event": {"type": "disconnect"}},
+        {"recv_ns": 10, "msg": json.loads(_book_msg(
+            "change", 22, prev=21, bids=[["change", 9, 9]]
+        ))},
+        {"recv_ns": 11, "msg": json.loads(_book_msg(
+            "snapshot", 30, bids=[["new", 8, 10]], asks=[["new", 13, 11]]
+        ))},
+    ]
+    source.write_text("".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows))
+
+    check_book.cmd_tob(Namespace(files=[str(source)], out=str(output)))
+    csv_rows = output.read_text().splitlines()
+    assert csv_rows[0] == check_book.TOB_HEADER.rstrip("\n")
+    values = [line.split(",") for line in csv_rows[1:]]
+    assert [row[3] for row in values] == ["1", "1", "0", "0", "0", "1", "1", "0", "1"]
+    # Gap and reconnect invalidations clear the visible ladder; a fresh snapshot restores it.
+    assert values[1][4:] == ["1000000000", "300000000", "1100000000", "200000000"]
+    assert values[2][4:] == ["", "", "", ""]
+    assert values[5][4:] == ["900000000", "700000000", "1200000000", "800000000"]
+    assert values[6][4:] == ["900000000", "700000000", "", ""]
+    assert values[7][4:] == ["", "", "", ""]
+    assert values[8][4:] == ["800000000", "1000000000", "1300000000", "1100000000"]
+
 def test_bracketed_sample_with_two_untouched_level_diffs_is_unexplained(
     tmp_path: Path,
 ) -> None:

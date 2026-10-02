@@ -36,7 +36,8 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
   - `config.json`: every setting, including input files, strategies, hedgers and latency.
   - For each account (one strategy + one hedger): `fills.csv`, `pnl.csv`, `summary.json`.
   - `pnl.csv` splits PnL into spread earned, fees, option mark-to-market, hedge PnL and adverse selection (markouts).
-- **SABR fit cache** `cache/sabr/YYYY-MM-DD.jsonl.gz`: fitted parameters per expiry over time, computed once per recorded day and reused by every replay.
+- **SABR fit cache** `cache/sabr/YYYY-MM-DD.jsonl.gz`: fitted parameters per expiry over time, computed once per recorded day and reused by every replay. One JSON object per line, sorted by `fit_time_ns + compute_ns` (the time the engine may use it): `{"fit_time_ns", "compute_ns", "expiry_ms", "beta", "alpha", "rho", "nu", "forward", "rmse_vol"}`.
+- **Book checkpoints** `cache/books/YYYY-MM-DD/HH.jsonl`: written by `mm_engine --checkpoint-dir cache/books` at each UTC hour. Each holds the latest recorded instrument lists plus one synthetic snapshot per valid book (real `change_id`), so a replay can start at any hour instead of at the recording's first snapshot.
 - **Results table:** built by a Python script from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model, latency, fee schedule date, fair-value source.
 - **Local dashboard** at `http://localhost:<port>`, with four tabs:
   - **Live:** current books, each account's quotes, fills, positions, Greeks (delta, vega, gamma) and PnL.

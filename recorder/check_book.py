@@ -4,6 +4,8 @@
            recorded instruments and save them to runs/checks/<stamp>.jsonl.
   verify   Rebuild books from data/raw/ (snapshot + changes) and compare full ladders at the
            message whose change_id equals each REST snapshot's change_id.
+  tob      Top of book after every book message, in the same CSV format and with the same
+           rebuild rules as `mm_engine --tob-out`, for a byte-for-byte comparison.
 
 The 100ms book channel batches changes, so a REST change_id can fall inside a batch and never
 appear in the stream. A sample is "inside_batch" only when all of these hold:
@@ -20,6 +22,7 @@ Pass: match / (samples - inside_batch) >= 0.99, and inside_batch <= 10% of sampl
 Run:
   uv run --env-file .env python recorder/check_book.py sample --count 200 --every 20
   uv run --env-file .env python recorder/check_book.py verify runs/checks/<stamp>.jsonl
+  uv run --env-file .env python recorder/check_book.py tob data/raw/DAY/21.jsonl.gz ... --out F
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ import argparse
 import bisect
 import gzip
 import json
+import math
 import os
 import random
 import sys
@@ -116,8 +120,10 @@ def raw_files(end_ns: int, since: str | None) -> list[Path]:
 
 
 def read_lines(path: Path):
-    """Lines of a gzip file, stopping cleanly at the unfinished tail of the live hour."""
-    with gzip.open(path, "rt") as fh:
+    """Lines of a gzip (or plain, e.g. a book checkpoint) file, stopping cleanly at the
+    unfinished tail of the live hour."""
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt") as fh:
         try:
             for line in fh:
                 if line.endswith("\n"):
@@ -300,6 +306,75 @@ def ladder_entries(side: dict[float, float], entries: list) -> dict[float, float
     return side
 
 
+TOB_HEADER = "recv_ns,instrument,change_id,valid,bid_px_e8,bid_amt_e8,ask_px_e8,ask_amt_e8\n"
+
+
+def to_e8(v: float) -> int:
+    """Same expression as the engine's to_e8() (engine/src/types.hpp)."""
+    return int(math.floor(v * 1e8 + 0.5))
+
+
+def cmd_tob(args: argparse.Namespace) -> None:
+    """Rules, as in engine/src/order_book.hpp: a snapshot resets the book and makes it valid; a
+    change applies only if the book is valid and prev_change_id equals the last change_id;
+    anything else clears the book and makes it invalid until the next snapshot. A recorder
+    connect or disconnect event invalidates every book. The last change_id updates on every
+    message."""
+    books: dict[str, dict] = {}
+    out = open(args.out, "w") if args.out else sys.stdout
+    out.write(TOB_HEADER)
+    for path in args.files:
+        for line in read_lines(Path(path)):
+            if '"channel":"book.' not in line and '"event":' not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "event" in rec:
+                if rec["event"].get("type") in ("connect", "disconnect"):
+                    for b in books.values():
+                        b["valid"] = False
+                        b["bids"].clear()
+                        b["asks"].clear()
+                continue
+            params = rec["msg"].get("params", {})
+            if not params.get("channel", "").startswith("book."):
+                continue
+            d = params["data"]
+            name = d["instrument_name"]
+            b = books.setdefault(name, {"valid": False, "cid": 0, "bids": {}, "asks": {}})
+            snapshot = d.get("type") == "snapshot"
+            if snapshot or (b["valid"] and d.get("prev_change_id", -1) == b["cid"]):
+                if snapshot:
+                    b["bids"].clear()
+                    b["asks"].clear()
+                    b["valid"] = True
+                for side in ("bids", "asks"):
+                    levels = b[side]
+                    for action, price, amount in d[side]:
+                        if action == "delete":
+                            levels.pop(to_e8(price), None)
+                        else:
+                            levels[to_e8(price)] = amount
+            else:
+                b["valid"] = False
+                b["bids"].clear()
+                b["asks"].clear()
+            b["cid"] = d["change_id"]
+            bid = ask = ","
+            if b["valid"] and b["bids"]:
+                px = max(b["bids"])
+                bid = f"{px},{to_e8(b['bids'][px])}"
+            if b["valid"] and b["asks"]:
+                px = min(b["asks"])
+                ask = f"{px},{to_e8(b['asks'][px])}"
+            valid = 1 if b["valid"] else 0
+            out.write(f"{rec['recv_ns']},{name},{d['change_id']},{valid},{bid},{ask}\n")
+    if out is not sys.stdout:
+        out.close()
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -311,9 +386,14 @@ def main() -> None:
     v = sub.add_parser("verify", help="compare rebuilt books with saved REST snapshots")
     v.add_argument("samples", help="runs/checks/<stamp>.jsonl from 'sample'")
     v.add_argument("--since", help="first raw hour to read, YYYY-MM-DD/HH (default: all)")
+    t = sub.add_parser("tob", help="top of book after every book message (engine format)")
+    t.add_argument("files", nargs="+", help="raw .jsonl.gz files (or checkpoint .jsonl), in order")
+    t.add_argument("--out", help="output CSV (default: stdout)")
     args = p.parse_args()
     if args.cmd == "sample":
         cmd_sample(args)
+    elif args.cmd == "tob":
+        cmd_tob(args)
     else:
         sys.exit(cmd_verify(args))
 
