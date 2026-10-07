@@ -24,6 +24,7 @@ bool MergedInput::fill_main() {
         parser_.parse_line(line, scratch_);
         for (auto& e : scratch_) pending_.push_back(std::move(e));
     }
+    if (pending_.empty()) main_done_ = true;
     return !pending_.empty();
 }
 

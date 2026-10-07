@@ -11,6 +11,8 @@ using Nanos = std::int64_t;
 inline constexpr Nanos kUs = 1'000;
 inline constexpr Nanos kMs = 1'000'000;
 inline constexpr Nanos kSec = 1'000'000'000;
+// 365-day year, the same basis sabr_sidecar/fit.py uses for T.
+inline constexpr Nanos kYear = 365 * 86'400 * kSec;
 
 // Prices as integers in 1e-8 units (BTC for options, USD for the perpetual), so book keys are
 // exact and output is deterministic.

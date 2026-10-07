@@ -1,0 +1,28 @@
+{
+  "inputs": [
+    "cache/books/2026-09-29/00.jsonl",
+    "data/raw/2026-09-29/00..23.jsonl.gz",
+    "cache/sabr/beta-0.5-recv/2026-09-29.jsonl.gz"
+  ],
+  "fill_model": "queue_aware",
+  "trade_through": "trade_size",
+  "late_trade_window_ms": 1000,
+  "pnl_interval_s": 10,
+  "settle_wait_s": 60,
+  "starting_equity_btc": 1.0,
+  "quoter": {
+    "size": 0.1,
+    "max_position": 1.0,
+    "max_vega_usd_per_vp": 100.0,
+    "min_abs_delta": 0.10,
+    "max_abs_delta": 0.90,
+    "stale_after_s": 10,
+    "no_quote_before_expiry_s": 3600,
+    "requote_interval_ms": 100,
+    "fit_max_age_s": 30
+  },
+  "accounts": [
+    {"name": "fixed_spread", "strategy": "fixed_spread", "params": {"half_spread_vp": 2.0}, "hedger": "none"},
+    {"name": "mark_iv_follower", "strategy": "mark_iv_follower", "params": {"half_spread_vp": 2.0}, "hedger": "none"}
+  ]
+}

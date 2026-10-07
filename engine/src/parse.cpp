@@ -147,6 +147,8 @@ void Parser::parse_line(std::string_view line, std::vector<Event>& out) {
             k.best_ask = num(data, "best_ask_price");
             k.best_bid_amount = num(data, "best_bid_amount");
             k.best_ask_amount = num(data, "best_ask_amount");
+            k.est_delivery_price = num(data, "estimated_delivery_price");  // "expired" -> NaN
+            k.delivery_price = num(data, "delivery_price");
             if (auto g = data.find("greeks"); g != data.end()) {
                 k.delta = num(*g, "delta");
                 k.gamma = num(*g, "gamma");
@@ -181,6 +183,7 @@ bool Parser::parse_fit_line(std::string_view line, Event& out) {
         f.nu = num(j, "nu");
         f.forward = num(j, "forward");
         f.rmse_vol = num(j, "rmse_vol");
+        f.recv_clock = j.value("clock", std::string()) == "recv";
         out = {f.fit_time + f.compute_ns, 0, f};
         return true;
     } catch (const json::exception&) {

@@ -28,17 +28,17 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
 - **Latency probe:** every 5 seconds (on a fixed schedule, so the acceptance bound of 10 s holds with margin) the recorder times a round trip of `public/test` on the same connection and logs it. The lowest round trip seen, divided by two, is our best-case one-way latency.
 - **Stored format:** the raw Deribit messages, one JSON object per line, gzipped. Files rotate hourly: `data/raw/YYYY-MM-DD/HH.jsonl.gz`. Each line also gets the local receive time in nanoseconds.
 - **Recorder log:** reconnects, detected gaps, resubscriptions, heartbeat misses and latency probes go to a separate log. The report quotes these, so data holes are visible.
-- **Dataset for headline results:** 7 continuous days of BTC recording.
+- **Dataset for headline results:** 7 continuous days of BTC recording, split in two. Parameters are tuned on the first 2 days only; headline results come from the last 5 days, run once with the parameters already fixed. Results from the tuning days are labelled in-sample.
 - **Fees:** Deribit's public fee schedule (options and perpetual, maker and taker, delivery fee). The exact numbers and the date we checked them live in `config/fees.json` and are printed in every report.
 
 ## 4. Outputs
 - **Run folder** `runs/<run_id>/`. Nothing is ever written into `data/` except by the recorder.
   - `config.json`: every setting, including input files, strategies, hedgers and latency.
-  - For each account (one strategy + one hedger): `fills.csv`, `pnl.csv`, `summary.json`.
-  - `pnl.csv` splits PnL into spread earned, fees, option mark-to-market, hedge PnL and adverse selection (markouts).
-- **SABR fit cache** `cache/sabr/beta-<β>/YYYY-MM-DD.jsonl.gz` (built by `sabr_sidecar/fit.py`): fitted parameters per expiry over time, computed once per recorded day and β and reused by every replay. One JSON object per line, sorted by `fit_time_ns + compute_ns` (the time the engine may use it): `{"fit_time_ns", "compute_ns", "expiry_ms", "beta", "alpha", "rho", "nu", "forward", "rmse_vol"}`, plus diagnostics the engine ignores: `n_quotes`, `t_years`, `mark_err_med_vp`, `mark_err_max_vp` (error vs Deribit mark IV over the fitted strikes, in vol points), `nu_max` (vol-of-vol bound, 5/√T), `at_bound`.
+  - For each account (one strategy + one hedger), in `runs/<run_id>/<account>/`: `fills.csv`, `pnl.csv`, `summary.json`.
+  - `pnl.csv` splits PnL into spread earned, fees, option mark-to-market, hedge PnL and adverse selection (markouts). One row every 10 s (a setting), plus one at every fill and settlement; interval rows are skipped while the account is flat and unchanged.
+- **SABR fit cache** `cache/sabr/beta-<β>-recv/YYYY-MM-DD.jsonl.gz` (built by `sabr_sidecar/fit.py --clock recv`; without `-recv` and `--clock`, the same cache cut on exchange timestamps, used for the β report and for `--md-timing exchange`): fitted parameters per expiry over time, computed once per recorded day and β and reused by every replay. One JSON object per line, sorted by `fit_time_ns + compute_ns` (the time the engine may use it): `{"fit_time_ns", "compute_ns", "expiry_ms", "beta", "alpha", "rho", "nu", "forward", "rmse_vol"}`, plus diagnostics the engine ignores: `n_quotes`, `t_years`, `mark_err_med_vp`, `mark_err_max_vp` (error vs Deribit mark IV over the fitted strikes, in vol points), `nu_max` (vol-of-vol bound, 5/√T), `at_bound`.
 - **Book checkpoints** `cache/books/YYYY-MM-DD/HH.jsonl`: written by `mm_engine --checkpoint-dir cache/books` at each UTC hour. Each holds the latest recorded instrument lists plus one synthetic snapshot per valid book (real `change_id`), so a replay can start at any hour instead of at the recording's first snapshot.
-- **Results table:** built by a Python script from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model, latency, fee schedule date, fair-value source.
+- **Results table:** built by a Python script from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model (with its trade-through setting), market-data timing, latency, fee schedule date, fair-value source.
 - **Local dashboard** at `http://localhost:<port>`, with four tabs:
   - **Live:** current books, each account's quotes, fills, positions, Greeks (delta, vega, gamma) and PnL.
   - **Replay:** the same screen driven by a recorded day at 1x–100x speed.
@@ -73,7 +73,13 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
 - Machine-learning signals.
 
 ## 6. Key methods
-**Event loop.** The engine reads JSON lines from stdin, so replay is `gunzip -c ... | engine --fits cache/sabr/DAY.jsonl.gz` and live is `python live/feed.py | engine`. All logic uses exchange timestamps. A strategy only sees an event after `event_time + latency`, and its orders reach the "exchange" after a further `latency`. This rules out look-ahead by design.
+**Event loop.** The engine reads JSON lines from stdin, so replay is `gunzip -c ... | engine --fits cache/sabr/DAY.jsonl.gz` and live is `python live/feed.py | engine`. All logic uses exchange timestamps. A strategy never sees an event before `event_time + latency`, and its orders reach the "exchange" after a further `latency`. This rules out look-ahead by design.
+
+**Market-data timing.** The public 100ms feed delivers events well after their exchange timestamp (option tickers a median 0.6 s later in our recording). `--md-timing` sets what a strategy sees:
+- `received` (default): each event when the recorder actually got it. The recorded receive time already contains our network latency (lowest probe round trip / 2); that part is replaced by the configured latency, so the sweep still applies: `max(event_time, receive_time − recorded latency) + latency`. Assumes the recorder's clock and the exchange's are in step.
+- `exchange`: `event_time + latency`, a feed with no delay of its own. A best case, reported as such.
+
+Fills, queues and accounting run on exchange timestamps in both modes. Every results row names the mode.
 
 **Order book.** The book is rebuilt from the snapshot plus changes. If `prev_change_id` doesn't match, the instrument is marked stale and we stop quoting it until the next snapshot. Quotes are also pulled if an instrument sees no update for N seconds.
 
@@ -86,7 +92,7 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
   - weights set by 1 / IV spread,
   - the forward from the ticker,
   - a warm start from the previous fit.
-- Each fit only uses data up to its own timestamp. Its result reaches the engine at `fit_time + measured fit compute time`.
+- Each fit only uses data up to its own time: tickers received by then (`--clock recv`, for `--md-timing received`) or stamped by then (`--clock exchange`). Its result reaches the engine at `fit_time + measured fit compute time`, never earlier; in `received` mode it is delayed further by `latency − recorded latency` when that is positive, since its inputs would have arrived that much later. The engine refuses an exchange-clock cache in `received` mode.
 - Between fits, C++ re-evaluates Hagan's formula (a port of `sabr/model.py`'s `hagan_lognormal_vol`) as the forward moves.
 - β is fixed. Both 0.5 and 1.0 are tried on recorded data, and the one with lower fit error is chosen and documented.
 - For replay, fits are computed once per day and cached. For live, the sidecar feeds them straight into the engine's input.
@@ -107,13 +113,24 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
 - *Time-based:* hedge to zero every N minutes.
 - *Whalley–Wilmott:* the band width comes from gamma, the fee rate and a risk-aversion setting. It is wider when trading costs more, narrower when you care more about risk.
 
+**Our orders.** Quotes are post-only: one that would cross the recorded book when it arrives is rejected, never filled as a taker. A replace is a cancel plus a new order; it keeps its queue place only if the price is unchanged and the size no larger. Hedge orders are immediate-or-cancel takers that walk the recorded book. An order can only be filled by a trade stamped inside its own lifetime (from its arrival to its cancel), whatever order the messages arrive in.
+
 **Fill models:**
 - *Optimistic:* we get filled whenever a recorded trade prints at or through our price, up to the trade's size.
-- *Queue-aware:* our order joins the back of the queue at its price. Trades at that price use up the queue ahead of us first. Cancels at our level shrink the queue ahead of us in proportion to their size. A trade through our price fills us fully.
+- *Queue-aware:* our order joins the back of the queue at its price. Trades at that price use up the queue ahead of us first. Cancels at our level shrink the queue ahead of us in proportion to their size. A trade through our price means nothing was left ahead of us.
+- *Trade-through setting* (`trade_through`, both models): how much a trade through our price fills. `trade_size` (default): at most the trade's size, because the aggressor only traded that much. `full`: the whole order. With either value the optimistic model never fills less than the queue-aware one.
+- Maker fills are rounded down to whole lots (0.1 contract).
 
-**Latency.** The default is the lowest measured one-way latency from the recorder's probe (best case). The sweep also covers 10 / 25 / 50 / 75 / 100 / 250 ms and the measured median, so results show how much they depend on speed.
+**Latency.** This is the network leg only; the feed's own delay comes from the market-data timing above. The default is the lowest measured one-way latency from the recorder's probe (best case). The sweep also covers 10 / 25 / 50 / 75 / 100 / 250 ms and the measured median, so results show how much they depend on speed.
 
-**Accounting.** Each account tracks cash in BTC and positions marked to mid, applying fees on every fill. At expiry, options settle at the Deribit delivery price minus the delivery fee. PnL is split into spread, fees, hedge, option MTM and markouts (fill price vs mid 1s / 10s / 60s later). The markouts measure adverse selection.
+**Accounting.** Each account tracks cash in BTC and positions marked to mid (the ticker's mark price when the book is one-sided or invalid), applying fees on every fill. At expiry, options settle at the Deribit delivery price (the `delivery_price` on the ticker sent after expiry; if it never arrives, the last `estimated_delivery_price`) minus the delivery fee. PnL is split into parts that sum to the total:
+- *spread:* fill price vs mid at the fill (the mid at the trade's own timestamp, also when the trade print arrives late);
+- *fees:* trading and delivery fees;
+- *adverse selection:* the mid's move in the first 60 s after each fill;
+- *option MTM:* the mid's move after those 60 s, including settlement;
+- *hedge:* everything earned or lost on the perpetual, before fees.
+
+Markouts (fill price vs mid 1s / 10s / 60s later) are reported per fill; the 60 s markout of a fill equals its spread plus its adverse-selection part.
 
 **Determinism.** Same input plus same config gives byte-identical output files.
 
@@ -133,7 +150,7 @@ Each milestone is checked against these.
 8. **Accounting:** for every account at every step, cash + marked positions = starting equity + total PnL, and the PnL parts sum to the total (within 1e-9 BTC).
 9. **Determinism:** two runs with the same input and config produce identical files.
 10. **Speed:** one recorded day replays with all 16 accounts in under 5 minutes on the M2 Air. The target is checked in M2 and revised with the measured number if needed.
-11. **Results:** on the 7-day dataset:
+11. **Results:** on the 5-day report window of the 7-day dataset (parameters tuned on the first 2 days and fixed before the report window is run):
     - a table of 4 strategies × 2 fill models × the latency sweep (Whalley–Wilmott hedger);
     - a hedger table of 4 strategies × 4 hedgers (queue-aware, default latency).
     - Every row carries its conditions.

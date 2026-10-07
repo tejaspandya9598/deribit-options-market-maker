@@ -49,6 +49,9 @@ struct Ticker {
     double underlying_price = kNaN, index_price = kNaN;
     double best_bid = kNaN, best_ask = kNaN, best_bid_amount = kNaN, best_ask_amount = kNaN;
     double delta = kNaN, gamma = kNaN, vega = kNaN, theta = kNaN;
+    // Deribit's running estimate of the delivery price (a number until expiry), and the final
+    // one (only on the "delivered" ticker sent a few seconds after expiry).
+    double est_delivery_price = kNaN, delivery_price = kNaN;
 };
 
 struct IndexPrice {
@@ -61,6 +64,8 @@ struct SabrFit {
     Nanos compute_ns = 0;
     Nanos expiry = 0;
     double beta = kNaN, alpha = kNaN, rho = kNaN, nu = kNaN, forward = kNaN, rmse_vol = kNaN;
+    // The fit only used tickers received (not merely stamped) by fit_time: "clock":"recv".
+    bool recv_clock = false;
 };
 
 enum class InstrumentKind : std::uint8_t { Option, Perpetual, Other };

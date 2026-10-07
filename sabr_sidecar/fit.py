@@ -11,6 +11,14 @@ expiry with sabr.calibration.calibrate:
 No look-ahead: a fit at time t runs before the first ticker stamped after t is applied, so it
 only uses data up to t. Its result is usable at t + compute_ns (measured calibrate() time).
 
+--clock decides what "up to t" means:
+  exchange  a ticker counts from its exchange timestamp (the M3 cache)
+  recv      a ticker counts from the time the recorder received it. The public 100ms feed
+            delivers option tickers several hundred ms after their timestamp, so this is what
+            a fit running next to the recorder could really have used. Needed by the engine's
+            default mode (--md-timing received). Lines carry "clock":"recv" and go to
+            cache/sabr/beta-<beta>-recv/.
+
 Output: cache/sabr/beta-<beta>/YYYY-MM-DD.jsonl.gz, one fit per line, sorted by
 fit_time_ns + compute_ns. Fields (SPEC §4): fit_time_ns, compute_ns, expiry_ms, beta, alpha,
 rho, nu, forward, rmse_vol (unweighted, vol as a decimal), plus n_quotes, t_years and the
@@ -122,7 +130,7 @@ def fit_expiry(expiry_ms, quotes, fit_time_ns, beta, warm):
     compute_ns = time.perf_counter_ns() - t0
     model = smile(fwd, strikes, t_years, fit["alpha"], beta, fit["rho"], fit["nu"])
     errs = [abs(m - k) * 100 for m, k in zip(model, marks, strict=True) if not math.isnan(k)]
-    return {
+    out = {
         "fit_time_ns": fit_time_ns,
         "compute_ns": compute_ns,
         "expiry_ms": expiry_ms,
@@ -140,6 +148,9 @@ def fit_expiry(expiry_ms, quotes, fit_time_ns, beta, warm):
         "mark_err_med_vp": statistics.median(errs) if errs else None,
         "mark_err_max_vp": max(errs) if errs else None,
     }
+    if getattr(ARGS, "clock", "exchange") == "recv":
+        out["clock"] = "recv"  # exchange-clock lines stay as they were in M3
+    return out
 
 
 def fit_all(fit_time_ns, tickers, defs, warm, out, beta):
@@ -160,6 +171,7 @@ def fit_all(fit_time_ns, tickers, defs, warm, out, beta):
 
 def run_day(day: str) -> str:
     beta = ARGS.beta
+    by_recv = getattr(ARGS, "clock", "exchange") == "recv"
     every_ns = int(ARGS.every * 10**9)
     files = sorted((DATA_DIR / "raw" / day).glob("*.jsonl.gz"))
     if not files:
@@ -177,14 +189,17 @@ def run_day(day: str) -> str:
                 continue
             if '"channel":"ticker.BTC-' not in line or "PERPETUAL" in line:
                 continue
-            data = json.loads(line)["msg"]["params"]["data"]
+            rec = json.loads(line)
+            data = rec["msg"]["params"]["data"]
             ts_ns = data["timestamp"] * 10**6
+            # When this ticker starts to count: its own timestamp, or when we received it.
+            at_ns = rec["recv_ns"] if by_recv else ts_ns
             if next_fit is None:
-                next_fit = (ts_ns // every_ns + 1) * every_ns
-            if ts_ns > next_fit:
+                next_fit = (at_ns // every_ns + 1) * every_ns
+            if at_ns > next_fit:
                 # Fit at the latest grid time before this ticker, with everything seen so far.
                 # Skipped grid times (e.g. a disconnect) would have the same inputs.
-                fit_at = ((ts_ns - 1) // every_ns) * every_ns
+                fit_at = ((at_ns - 1) // every_ns) * every_ns
                 fit_all(fit_at, tickers, defs, warm, out, beta)
                 next_fit = fit_at + every_ns
             tickers[data["instrument_name"]] = {
@@ -195,7 +210,7 @@ def run_day(day: str) -> str:
                 "underlying_price": data.get("underlying_price"),
             }
     out.sort(key=lambda f: (f["fit_time_ns"] + f["compute_ns"], f["expiry_ms"]))
-    dest = CACHE_DIR / "sabr" / f"beta-{beta}" / f"{day}.jsonl.gz"
+    dest = CACHE_DIR / "sabr" / f"beta-{beta}{'-recv' if by_recv else ''}" / f"{day}.jsonl.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")
     with gzip.open(tmp, "wt") as fh:
@@ -224,6 +239,12 @@ def main() -> None:
     p.add_argument("--min-quotes", type=int, default=4)
     p.add_argument("--min-hours", type=float, default=0.5, help="skip expiries closer than this")
     p.add_argument("--jobs", type=int, default=1, help="days fitted in parallel")
+    p.add_argument(
+        "--clock",
+        choices=["exchange", "recv"],
+        default="exchange",
+        help="a ticker counts from its exchange timestamp, or from when it was received",
+    )
     args = p.parse_args()
     init(args)
     if args.jobs > 1:

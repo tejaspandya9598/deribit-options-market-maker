@@ -20,13 +20,23 @@ target_include_directories(nlohmann_json SYSTEM INTERFACE third_party)
 
 # Engine code shared by the executable and the tests.
 add_library(mm_core STATIC
+  engine/src/account.cpp
   engine/src/checkpoint.cpp
   engine/src/event_loop.cpp
+  engine/src/exchange_sim.cpp
+  engine/src/fees.cpp
+  engine/src/fill_model.cpp
   engine/src/input.cpp
   engine/src/market_state.cpp
   engine/src/order_book.cpp
   engine/src/parse.cpp
   engine/src/pricing.cpp
+  engine/src/quoter.cpp
+  engine/src/run_config.cpp
+  engine/src/run_output.cpp
+  engine/src/strategy.cpp
+  engine/src/strategies/fixed_spread.cpp
+  engine/src/strategies/mark_iv_follower.cpp
   engine/src/tob_dump.cpp
 )
 target_include_directories(mm_core PUBLIC engine/src)

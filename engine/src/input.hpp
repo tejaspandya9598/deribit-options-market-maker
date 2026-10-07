@@ -41,6 +41,8 @@ public:
     bool next(Event& out);
 
     std::int64_t fits_out_of_order = 0;
+    // True once the market input has ended; any events still returned are leftover fits.
+    bool main_exhausted() const { return main_done_; }
 
 private:
     bool fill_main();
@@ -54,6 +56,7 @@ private:
     std::optional<Event> next_fit_;
     Nanos last_main_time_ = 0;
     Nanos last_fit_time_ = 0;
+    bool main_done_ = false;
 };
 
 }  // namespace mm
