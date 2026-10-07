@@ -890,6 +890,7 @@ TEST_CASE("M4 quoter rounds by tick steps and clamps crossing quotes inside the 
         cfg.requote_interval = 0;
         cfg.stale_after = 60 * kSec;
         cfg.no_quote_before_expiry = 0;
+        cfg.reduce_only_before_expiry = 0;
         Quoter quoter(loop, 0, std::move(strategy), cfg);
         loop.add_market_observer(&quoter);
         loop.add_exchange_observer(&capture);
@@ -921,17 +922,17 @@ TEST_CASE("M4 quoter rounds by tick steps and clamps crossing quotes inside the 
         return capture.orders;
     };
 
-    auto boundary = orders_for({0.020, 0.020001});
+    auto boundary = orders_for({0.020, 0.020001, std::nullopt});
     REQUIRE(boundary.size() == 2);
     CHECK(boundary[0].price == to_e8(0.020));  // exact threshold still uses base tick
     CHECK(boundary[1].price == to_e8(0.025));  // just above threshold uses the larger step
 
-    auto clamp_bid = orders_for({0.03, std::nullopt});
+    auto clamp_bid = orders_for({0.03, std::nullopt, std::nullopt});
     REQUIRE(clamp_bid.size() == 1);
     CHECK(clamp_bid[0].side == Side::Buy);
     CHECK(clamp_bid[0].price == to_e8(0.025));  // best ask minus its active tick
 
-    auto clamp_ask = orders_for({std::nullopt, 0.01});
+    auto clamp_ask = orders_for({std::nullopt, 0.01, std::nullopt});
     REQUIRE(clamp_ask.size() == 1);
     CHECK(clamp_ask[0].side == Side::Sell);
     CHECK(clamp_ask[0].price == to_e8(0.011));  // best bid plus the active base tick
@@ -942,7 +943,7 @@ TEST_CASE("M4 quoter risk, stale pull, and slot races reconcile from exchange up
     CaptureExchange capture;
     auto strategy = std::make_unique<TestStrategy>();
     TestStrategy* strategy_ptr = strategy.get();
-    strategy_ptr->next = {0.02, 0.025};
+    strategy_ptr->next = {0.02, 0.025, std::nullopt};
     QuoterConfig cfg;
     cfg.size = 1.0;
     cfg.max_position = 1.0;
@@ -950,6 +951,7 @@ TEST_CASE("M4 quoter risk, stale pull, and slot races reconcile from exchange up
     cfg.requote_interval = 0;
     cfg.stale_after = kSec;
     cfg.no_quote_before_expiry = 0;
+    cfg.reduce_only_before_expiry = 0;
     Quoter quoter(loop, 0, std::move(strategy), cfg);
     loop.add_market_observer(&quoter);
     loop.add_exchange_observer(&capture);
@@ -1018,7 +1020,7 @@ TEST_CASE("M4 quoter stops adding same-direction risk at the account vega limit"
     EventLoop loop({0, 0});
     CaptureExchange capture;
     auto strategy = std::make_unique<TestStrategy>();
-    strategy->next = {0.02, 0.025};
+    strategy->next = {0.02, 0.025, std::nullopt};
     QuoterConfig cfg;
     cfg.size = 1.0;
     cfg.max_position = 10.0;
@@ -1026,6 +1028,7 @@ TEST_CASE("M4 quoter stops adding same-direction risk at the account vega limit"
     cfg.requote_interval = 0;
     cfg.stale_after = 60 * kSec;
     cfg.no_quote_before_expiry = 0;
+    cfg.reduce_only_before_expiry = 0;
     Quoter quoter(loop, 0, std::move(strategy), cfg);
     loop.add_market_observer(&quoter);
     loop.add_exchange_observer(&capture);
@@ -1081,11 +1084,12 @@ TEST_CASE("M4 quoter slot state survives fill, replace, and cancel races") {
     CaptureExchange capture;
     auto strategy = std::make_unique<TestStrategy>();
     TestStrategy* strategy_ptr = strategy.get();
-    strategy_ptr->next = {0.02, 0.025};
+    strategy_ptr->next = {0.02, 0.025, std::nullopt};
     QuoterConfig cfg;
     cfg.requote_interval = 0;
     cfg.stale_after = 60 * kSec;
     cfg.no_quote_before_expiry = 0;
+    cfg.reduce_only_before_expiry = 0;
     Quoter quoter(loop, 0, std::move(strategy), cfg);
     loop.add_market_observer(&quoter);
     loop.add_exchange_observer(&capture);

@@ -26,16 +26,21 @@ add_library(mm_core STATIC
   engine/src/exchange_sim.cpp
   engine/src/fees.cpp
   engine/src/fill_model.cpp
+  engine/src/hedge_runner.cpp
+  engine/src/hedger.cpp
   engine/src/input.cpp
   engine/src/market_state.cpp
   engine/src/order_book.cpp
   engine/src/parse.cpp
+  engine/src/portfolio.cpp
   engine/src/pricing.cpp
   engine/src/quoter.cpp
   engine/src/run_config.cpp
   engine/src/run_output.cpp
   engine/src/strategy.cpp
   engine/src/strategies/fixed_spread.cpp
+  engine/src/strategies/inventory_skew.cpp
+  engine/src/strategies/join_best.cpp
   engine/src/strategies/mark_iv_follower.cpp
   engine/src/tob_dump.cpp
 )

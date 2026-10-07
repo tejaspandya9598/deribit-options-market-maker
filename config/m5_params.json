@@ -1,0 +1,169 @@
+{
+  "note": "Tuned on the tuning window only (analysis/run_grid.py tune). Frozen before any report-window run; in-sample numbers below are not results.",
+  "tuning_window_utc": [
+    "2026-09-28T21:42:41Z",
+    "2026-09-30T21:42:41Z"
+  ],
+  "report_window_utc": [
+    "2026-09-30T21:42:41Z",
+    "2026-10-05T21:42:41Z"
+  ],
+  "objective": "total PnL in BTC after fees over the tuning window; queue-aware fills, lowest measured latency, Whalley-Wilmott hedger, received-time market data",
+  "active_rule": "where the best-PnL set made fewer than 20 maker fills in the tuning window, 'active' is the best-PnL set among those with at least that many",
+  "strategies": {
+    "fixed_spread": {
+      "params": {
+        "half_spread_vp": 6
+      },
+      "quoter": {
+        "fee_edge_mult": 0,
+        "requote_band_ticks": 0,
+        "reduce_only_before_expiry_s": 3600
+      },
+      "in_sample_pnl_btc": -0.00017908719366925628,
+      "in_sample_maker_fills": 1,
+      "sets_tried": 36,
+      "active": {
+        "params": {
+          "half_spread_vp": 4
+        },
+        "quoter": {
+          "fee_edge_mult": 0,
+          "requote_band_ticks": 1,
+          "reduce_only_before_expiry_s": 3600
+        },
+        "in_sample_pnl_btc": -0.0029223288292737223,
+        "in_sample_maker_fills": 24
+      }
+    },
+    "mark_iv_follower": {
+      "params": {
+        "half_spread_vp": 2
+      },
+      "quoter": {
+        "fee_edge_mult": 2,
+        "requote_band_ticks": 0,
+        "reduce_only_before_expiry_s": 3600
+      },
+      "in_sample_pnl_btc": 0.0009306269147891689,
+      "in_sample_maker_fills": 21,
+      "sets_tried": 36,
+      "active": null
+    },
+    "inventory_skew": {
+      "params": {
+        "half_spread_vp": 2,
+        "skew_vp_per_100_vega": 2
+      },
+      "quoter": {
+        "fee_edge_mult": 1,
+        "requote_band_ticks": 1,
+        "reduce_only_before_expiry_s": 3600
+      },
+      "in_sample_pnl_btc": -0.0007508564146481917,
+      "in_sample_maker_fills": 41,
+      "sets_tried": 32,
+      "active": null
+    },
+    "join_best": {
+      "params": {
+        "min_edge_vp": 4
+      },
+      "quoter": {
+        "fee_edge_mult": 2,
+        "requote_band_ticks": 0,
+        "reduce_only_before_expiry_s": 3600
+      },
+      "in_sample_pnl_btc": 0.0,
+      "in_sample_maker_fills": 0,
+      "sets_tried": 36,
+      "active": {
+        "params": {
+          "min_edge_vp": 2
+        },
+        "quoter": {
+          "fee_edge_mult": 1,
+          "requote_band_ticks": 0,
+          "reduce_only_before_expiry_s": 3600
+        },
+        "in_sample_pnl_btc": -0.002314709995087258,
+        "in_sample_maker_fills": 27
+      }
+    }
+  },
+  "whalley_wilmott": {
+    "risk_aversion_per_usd": 0.0001,
+    "min_band_btc": 0.005
+  },
+  "whalley_wilmott_tried": [
+    {
+      "risk_aversion_per_usd": 0.0001,
+      "pnl_btc": {
+        "fixed_spread": -0.0006637595839828846,
+        "mark_iv_follower": 0.0016166117000107763,
+        "inventory_skew": 0.0005620615420399023,
+        "join_best": 0.0
+      },
+      "pnl_btc_sum": 0.001514913658067794
+    },
+    {
+      "risk_aversion_per_usd": 0.001,
+      "pnl_btc": {
+        "fixed_spread": -0.00017908719366925628,
+        "mark_iv_follower": 0.0009306269147891689,
+        "inventory_skew": -0.0007508564146481917,
+        "join_best": 0.0
+      },
+      "pnl_btc_sum": 6.833064717209599e-07
+    },
+    {
+      "risk_aversion_per_usd": 0.01,
+      "pnl_btc": {
+        "fixed_spread": 1.4283230876751879e-05,
+        "mark_iv_follower": 0.000634846082780655,
+        "inventory_skew": -0.0011463322693265905,
+        "join_best": 0.0
+      },
+      "pnl_btc_sum": -0.0004972029556691835
+    },
+    {
+      "risk_aversion_per_usd": 0.1,
+      "pnl_btc": {
+        "fixed_spread": 6.756977645319554e-05,
+        "mark_iv_follower": 0.000344282117042895,
+        "inventory_skew": -0.0013299004677375086,
+        "join_best": 0.0
+      },
+      "pnl_btc_sum": -0.0009180485742414181
+    }
+  ],
+  "fixed_hedgers": {
+    "none": {},
+    "fixed_band": {
+      "band_btc": 0.05
+    },
+    "time_based": {
+      "interval_min": 15
+    }
+  },
+  "base_quoter": {
+    "size": 0.1,
+    "max_position": 1.0,
+    "max_vega_usd_per_vp": 100.0,
+    "min_abs_delta": 0.1,
+    "max_abs_delta": 0.9,
+    "stale_after_s": 10,
+    "no_quote_before_expiry_s": 3600,
+    "requote_interval_ms": 100,
+    "fit_max_age_s": 30
+  },
+  "base_run": {
+    "trade_through": "trade_size",
+    "late_trade_window_ms": 1000,
+    "pnl_interval_s": 10,
+    "settle_wait_s": 60,
+    "starting_equity_btc": 1.0,
+    "hedge_interval_ms": 1000,
+    "hedge_slippage": 0.001
+  }
+}

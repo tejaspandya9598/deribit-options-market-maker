@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "pricing.hpp"
 
@@ -27,8 +28,30 @@ double years_to(Nanos expiry, Nanos now) {
 }  // namespace
 
 Quoter::Quoter(EventLoop& loop, std::uint32_t account, std::unique_ptr<Strategy> strategy,
-               QuoterConfig cfg)
-    : loop_(loop), account_(account), strategy_(std::move(strategy)), cfg_(cfg) {}
+               QuoterConfig cfg, const FeeSchedule* fees)
+    : loop_(loop), account_(account), strategy_(std::move(strategy)), cfg_(cfg), fees_(fees) {}
+
+void Quoter::on_index(double price, Nanos t) {
+    if (!(price > 0)) return;
+    if (rv_last_price_ > 0 && t > rv_last_time_) {
+        const double dt = static_cast<double>(t - rv_last_time_) / kSec;
+        const double r = std::log(price / rv_last_price_);
+        // Weight of the new observation for a half-life of rv_halflife.
+        const double w = 1.0 - std::exp(-dt * std::numbers::ln2 / (static_cast<double>(cfg_.rv_halflife) / kSec));
+        rv_var_rate_ += w * (r * r / dt - rv_var_rate_);
+    } else if (!(rv_last_price_ > 0)) {
+        rv_first_time_ = t;
+    }
+    if (t >= rv_last_time_) {
+        rv_last_price_ = price;
+        rv_last_time_ = t;
+    }
+}
+
+double Quoter::realized_vol() const {
+    if (rv_first_time_ == 0 || rv_last_time_ - rv_first_time_ < cfg_.rv_halflife) return kNaN;
+    return std::sqrt(rv_var_rate_ * static_cast<double>(kYear / kSec));
+}
 
 Quoter::State& Quoter::state(InstrumentId id) {
     auto i = static_cast<size_t>(id);
@@ -47,6 +70,8 @@ void Quoter::on_market(const Event& e, const MarketState& view, Nanos now) {
         maybe_evaluate(k->id, view, now);
     } else if (const auto* u = std::get_if<BookUpdate>(&e.payload)) {
         maybe_evaluate(u->id, view, now);
+    } else if (const auto* x = std::get_if<IndexPrice>(&e.payload)) {
+        on_index(x->price, e.time);
     }
     // Quotes on an option that went quiet get no event to pull them on: check once a second.
     if (now >= next_sweep_) {
@@ -92,17 +117,24 @@ void Quoter::update_vega(const MarketState& view, Nanos now) {
 void Quoter::evaluate(InstrumentId id, State& st, const MarketState& view, Nanos now) {
     st.last_eval = now;
     ++stats_.evaluations;
-    std::optional<Px> bid, ask;
+    Want bid, ask;
     desired(id, st, view, now, bid, ask);
-    reconcile(id, Side::Buy, st, st.bid, bid);
-    reconcile(id, Side::Sell, st, st.ask, ask);
+    const InstrumentDef* d = view.def(id);
+    reconcile(id, Side::Buy, st, st.bid, bid, d != nullptr ? tick_at(*d, from_e8(st.bid.price)) : 0);
+    reconcile(id, Side::Sell, st, st.ask, ask, d != nullptr ? tick_at(*d, from_e8(st.ask.price)) : 0);
 }
 
 void Quoter::desired(InstrumentId id, const State& st, const MarketState& view, Nanos now,
-                     std::optional<Px>& bid, std::optional<Px>& ask) {
+                     Want& want_bid, Want& want_ask) {
+    std::optional<Px>& bid = want_bid.price;
+    std::optional<Px>& ask = want_ask.price;
     const InstrumentDef* d = view.def(id);
     if (d == nullptr || d->kind != InstrumentKind::Option) return;
+    if (cfg_.trade_from != 0 && now < cfg_.trade_from) return;
+    if (cfg_.trade_until != 0 && now >= cfg_.trade_until) return;
     if (now >= d->expiry - cfg_.no_quote_before_expiry) return;
+    const bool reduce_only = now >= d->expiry - cfg_.reduce_only_before_expiry;
+    if (reduce_only && std::abs(st.position) <= kEps) return;
     const OrderBook* book = view.book(id);
     const Ticker* k = view.ticker(id);
     if (book == nullptr || k == nullptr || !book->valid()) return;
@@ -121,11 +153,28 @@ void Quoter::desired(InstrumentId id, const State& st, const MarketState& view, 
     ctx.mark_iv = k->mark_iv / 100.0;
     ctx.position = st.position;
     ctx.account_vega = vega_;
+    ctx.max_vega = cfg_.max_vega;
+    ctx.realized_vol = realized_vol();
+    ctx.fee_edge_mult = cfg_.fee_edge_mult;
+    ctx.fees = fees_;
     if (auto it = view.fits().find(d->expiry); it != view.fits().end()) {
         const SabrFit& f = it->second;
         if (now - (f.fit_time + f.compute_ns) <= cfg_.fit_max_age) ctx.fit = &f;
     }
-    const Quote q = strategy_->quote(ctx);
+    Quote q = strategy_->quote(ctx);
+
+    // Fee floor: at least min_edge between the quote and fair, on both sides.
+    if (q.fair && std::isfinite(*q.fair) && *q.fair > 0) {
+        const double edge = ctx.min_edge(*q.fair);
+        if (edge > 0) {
+            const double cap = *q.fair - edge, floor = *q.fair + edge;
+            if (q.bid) q.bid = std::min(*q.bid, cap);
+            if (q.ask) q.ask = std::max(*q.ask, floor);
+            // The same bounds on the tick grid, for quotes the re-quote band keeps.
+            if (cap > 0) want_bid.bound = static_cast<Px>(std::floor(cap * kE8 / static_cast<double>(tick_at(*d, cap)) + kEps)) * tick_at(*d, cap);
+            want_ask.bound = static_cast<Px>(std::ceil(floor * kE8 / static_cast<double>(tick_at(*d, floor)) - kEps)) * tick_at(*d, floor);
+        }
+    }
 
     const Px min_tick = to_e8(d->tick_size);
     const auto best_bid = book->best_bid();
@@ -150,9 +199,12 @@ void Quoter::desired(InstrumentId id, const State& st, const MarketState& view, 
     // Risk limits: stop adding on the side that would take us further out.
     if (st.position + cfg_.size > cfg_.max_position + kEps || vega_ >= cfg_.max_vega) bid.reset();
     if (st.position - cfg_.size < -cfg_.max_position - kEps || vega_ <= -cfg_.max_vega) ask.reset();
+    // Close to expiry: only the side that takes the position towards zero.
+    if (reduce_only) (st.position > 0 ? bid : ask).reset();
 }
 
-void Quoter::reconcile(InstrumentId id, Side side, State& st, Slot& slot, std::optional<Px> want) {
+void Quoter::reconcile(InstrumentId id, Side side, State& st, Slot& slot, const Want& w, Px tick) {
+    const std::optional<Px>& want = w.price;
     OrderRequest o;
     o.account = account_;
     o.instrument = id;
@@ -175,6 +227,11 @@ void Quoter::reconcile(InstrumentId id, Side side, State& st, Slot& slot, std::o
                 slot.state = SlotState::Cancelling;
                 ++stats_.cancels;
             } else if (*want != slot.price) {
+                // Re-quote band: a small move is not worth the queue place, as long as the
+                // resting quote still keeps the fee floor.
+                const bool floor_ok = w.bound == 0 || (side == Side::Buy ? slot.price <= w.bound : slot.price >= w.bound);
+                const Px gap = *want > slot.price ? *want - slot.price : slot.price - *want;
+                if (cfg_.requote_band_ticks > 0 && floor_ok && gap <= cfg_.requote_band_ticks * tick) return;
                 o.action = OrderAction::Replace;
                 o.client_id = slot.id;
                 o.new_id = next_id_++;

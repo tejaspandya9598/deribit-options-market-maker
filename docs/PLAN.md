@@ -102,16 +102,83 @@ Each milestone is built from its checklist, tested and reviewed against its "don
 **Done when:** the fill models behave as the spec says in all listed scenarios, the accounting identity holds at every step for every account, and one recorded day runs end to end with both strategies side by side.
 
 ## M5: Remaining strategies, hedgers, results
-- [ ] Inventory-skewed (A-S) and join-the-best strategies
-- [ ] Hedger interface + no hedge, fixed band, time-based, Whalley–Wilmott (on BTC-PERPETUAL)
-- [ ] `analysis/run_grid.py`: runs fill model × latency sweep in parallel across cores, 16 accounts per run
-- [ ] `analysis/results.py`: builds the strategy table and the hedger table, each row with its conditions
+- [x] Inventory-skewed (A-S) and join-the-best strategies
+- [x] Hedger interface + no hedge, fixed band, time-based, Whalley–Wilmott (on BTC-PERPETUAL)
+- [x] `analysis/run_grid.py`: runs fill model × latency sweep in parallel across cores, 16 accounts per run
+- [x] `analysis/results.py`: builds the strategy table and the hedger table, each row with its conditions
 - From the M4 results (agreed 2026-10-06), as quoter settings shared by every strategy:
-  - [ ] Fee-aware quotes: never quote closer to fair than the fee plus a set margin, whatever the vol-point spread says
-  - [ ] Re-quote band: leave a resting quote alone while it is within N ticks of the wanted price, to keep its queue place
-  - [ ] Near expiry: stop opening positions earlier than the last hour and only quote the side that reduces the position
-- [ ] Build the receive-clock fit cache (`fit.py --clock recv`) for all 7 days; the grid needs it
-- [ ] Tune on 2 days, report on 5 (agreed 2026-10-06). Tuning window: 2026-09-28 21:42:41 → 2026-09-30 21:42:41 UTC. Report window: 2026-09-30 21:42:41 → 2026-10-05 21:42:41 UTC. Every parameter is fixed before the report window is run; the results tables use the report window only, and say so. A tuning-window table is kept next to them, labelled as in-sample.
+  - [x] Fee-aware quotes: never quote closer to fair than the fee plus a set margin, whatever the vol-point spread says (`fee_edge_mult`: the distance is that multiple of the maker fee)
+  - [x] Re-quote band: leave a resting quote alone while it is within N ticks of the wanted price, to keep its queue place (`requote_band_ticks`)
+  - [x] Near expiry: stop opening positions earlier than the last hour and only quote the side that reduces the position (`reduce_only_before_expiry_s`)
+- [x] Build the receive-clock fit cache (`fit.py --clock recv`) for all 7 days; the grid needs it
+- [x] Tune on 2 days, report on 5 (agreed 2026-10-06). Tuning window: 2026-09-28 21:42:41 → 2026-09-30 21:42:41 UTC. Report window: 2026-09-30 21:42:41 → 2026-10-05 21:42:41 UTC. Every parameter is fixed before the report window is run; the results tables use the report window only, and say so. A tuning-window table is kept next to them, labelled as in-sample.
+  - Run it: `uv run --env-file .env python analysis/run_grid.py tune`, then `... run_grid.py report`, then `uv run --env-file .env python analysis/results.py`. Tables land in `runs/m5/results/` (`strategy_table`, `hedger_table`, `tuning_table`, each as `.csv` with every condition per row and as `.md`). `runs/` is not tracked, so a copy of the six files as of the M5 commit is in [docs/results/](results/). Run folders: `runs/m5/tune/`, `runs/m5/report/`.
+  - **Tuning** (in-sample, not a result). 140 parameter sets (36 / 36 / 32 / 36 per strategy), 16 accounts per engine run, queue-aware fills, lowest latency, Whalley–Wilmott hedger; then 4 risk-aversion values on the picked sets. Objective: total PnL in BTC after fees. Frozen in [config/m5_params.json](../config/m5_params.json):
+
+    | Strategy | Picked set (best PnL) | In-sample PnL BTC | In-sample fills |
+    |---|---|---|---|
+    | fixed_spread | half-spread 6 vp, no fee floor, no band | −0.000179 | 1 |
+    | mark_iv_follower | half-spread 2 vp, fee floor 2×, no band | +0.000931 | 21 |
+    | inventory_skew | half-spread 2 vp, skew 2 vp per 100 vega, fee floor 1×, band 1 tick | −0.000751 | 41 |
+    | join_best | min edge 4 vp, fee floor 2×, no band | 0 | 0 |
+
+    Whalley–Wilmott risk aversion: 1e-4 per USD (band floor 0.005 BTC). The near-expiry window stayed at 1 hour in every pick, i.e. off. Not tuned: quote size 0.1, max 1.0 contract per option, vega limit 100 USD per vol point, fixed band 0.05 BTC, time-based 15 min.
+  - **The objective picked sets that hardly trade** for two strategies: every fixed_spread and join_best set lost money in-sample, so the best was the one that traded least (1 fill and 0 fills). Only 7 of the 140 sets made money, all mark_iv_follower. The agreed rule and its picks were kept. A second pick was added for those two strategies before any report-window run: the best PnL among sets with at least 20 maker fills in the tuning window (10 a day). fixed_spread: half-spread 4 vp, no fee floor, band 1 tick (in-sample −0.002922 BTC, 24 fills). join_best: min edge 2 vp, fee floor 1× (in-sample −0.002315 BTC, 27 fills). The threshold was chosen after seeing the tuning results, and both picks are reported.
+  - **Report window, run once with those parameters.** Conditions for every row below: BTC options, 2026-09-30 21:42:41 → 2026-10-05 21:42:41 UTC (index 83,851 → 85,912), 206–240 options quoted per account (|delta| 0.10–0.90, none in the last hour before expiry), 0.1 contract per quote, max 1.0 contract per option, 100 USD/vol-point vega limit, `trade_through` = `trade_size`, market data as received, fees as checked 2026-09-27 (standard tier), SABR β = 0.5 on the receive clock (mark_iv_follower: Deribit mark IV), starting equity 1 BTC, positions still open at the end marked to mid. USD at the last index. All figures after fees.
+  - **Hedger table** (queue-aware fills, latency 37.5 ms each way; fixed_spread and join_best use their min-20-fills set, since a set that never trades has nothing to hedge):
+
+    | Strategy | Hedger | Fills | Hedge orders | PnL BTC | PnL USD | Spread | Fees | Adverse 60 s | Option MTM | Hedge | Max drawdown |
+    |---|---|---|---|---|---|---|---|---|---|---|---|
+    | fixed_spread | none | 61 | 0 | +0.000600 | +51.51 | +0.001940 | −0.001745 | −0.002485 | +0.002890 | +0.000000 | 0.012043 |
+    | fixed_spread | fixed_band | 61 | 275 | −0.009508 | −816.82 | +0.001940 | −0.008417 | −0.002485 | +0.002890 | −0.003435 | 0.012546 |
+    | fixed_spread | time_based | 61 | 389 | −0.005932 | −509.67 | +0.001940 | −0.005525 | −0.002485 | +0.002890 | −0.002752 | 0.009031 |
+    | fixed_spread | whalley_wilmott | 61 | 1230 | −0.008861 | −761.23 | +0.001940 | −0.003202 | −0.002485 | +0.002890 | −0.008004 | 0.012018 |
+    | mark_iv_follower | none | 44 | 0 | +0.005327 | +457.62 | +0.000815 | −0.001072 | −0.001535 | +0.007119 | +0.000000 | 0.009868 |
+    | mark_iv_follower | fixed_band | 44 | 112 | −0.006081 | −522.41 | +0.000815 | −0.004063 | −0.001535 | +0.007119 | −0.008417 | 0.007009 |
+    | mark_iv_follower | time_based | 44 | 394 | −0.003402 | −292.30 | +0.000815 | −0.003333 | −0.001535 | +0.007119 | −0.006468 | 0.004651 |
+    | mark_iv_follower | whalley_wilmott | 44 | 572 | −0.001508 | −129.60 | +0.000815 | −0.002111 | −0.001535 | +0.007119 | −0.005797 | 0.003950 |
+    | inventory_skew | none | 130 | 0 | +0.014406 | +1237.65 | +0.002995 | −0.003218 | −0.003685 | +0.018314 | +0.000000 | 0.029064 |
+    | inventory_skew | fixed_band | 130 | 417 | −0.015105 | −1297.66 | +0.002995 | −0.012281 | −0.003685 | +0.018314 | −0.020447 | 0.016272 |
+    | inventory_skew | time_based | 130 | 446 | −0.010774 | −925.61 | +0.002995 | −0.008247 | −0.003685 | +0.018314 | −0.020150 | 0.011646 |
+    | inventory_skew | whalley_wilmott | 130 | 1210 | −0.009940 | −854.00 | +0.002995 | −0.004737 | −0.003685 | +0.018314 | −0.022827 | 0.014019 |
+    | join_best | none | 68 | 0 | +0.007556 | +649.16 | +0.001975 | −0.001803 | −0.001930 | +0.009314 | +0.000000 | 0.014402 |
+    | join_best | fixed_band | 68 | 128 | −0.005639 | −484.48 | +0.001975 | −0.004509 | −0.001930 | +0.009314 | −0.010489 | 0.006997 |
+    | join_best | time_based | 68 | 386 | −0.003852 | −330.89 | +0.001975 | −0.004290 | −0.001930 | +0.009314 | −0.008920 | 0.005005 |
+    | join_best | whalley_wilmott | 68 | 1279 | −0.003271 | −280.98 | +0.001975 | −0.002653 | −0.001930 | +0.009314 | −0.009976 | 0.006453 |
+
+    - No hedged account made money: 0 of 12.
+    - All four unhedged accounts are up, and delta explains it: delta × index move summed over the 10 s rows is +0.001252 (fixed_spread), +0.006214 (mark_iv_follower), +0.016740 (inventory_skew), +0.007597 (join_best) BTC, against totals of +0.000600, +0.005327, +0.014406, +0.007556. That is a directional gain in a week the index rose 2.5%, not market-making edge.
+    - The hedgers do hedge: mean |account delta| is 0.26–0.50 BTC unhedged, 0.012–0.016 with the fixed band, 0.009–0.021 time-based, 0.08–0.18 with Whalley–Wilmott (its tuned band is wide).
+    - Hedging is expensive here: the fixed band traded 0.66–2.2 million USD of perpetual per account and paid 0.0027–0.0091 BTC in taker fees, more than the options side earned in spread. Whalley–Wilmott traded 0.21–0.37 million USD.
+  - **Strategy table** (Whalley–Wilmott hedger). The rows shown are at the lowest measured latency (37.5 ms); the last column is the range over all 8 latencies (10, 25, 37.5, 44.4 = measured median, 50, 75, 100, 250 ms). All 96 rows are in `runs/m5/results/strategy_table.md`.
+
+    | Strategy | Parameter set | Fill model | Fills | PnL BTC | PnL USD | Spread | Fees | Adverse 60 s | Option MTM | Hedge | PnL BTC over the 8 latencies |
+    |---|---|---|---|---|---|---|---|---|---|---|---|
+    | fixed_spread | best PnL | queue-aware | 7 | +0.001514 | +130.07 | −0.000340 | −0.000301 | −0.000580 | +0.003451 | −0.000716 | +0.001420 to +0.001514 |
+    | fixed_spread | best PnL | optimistic | 18 | −0.001343 | −115.41 | +0.000800 | −0.001085 | −0.000290 | +0.001757 | −0.002524 | −0.001943 to +0.000268 |
+    | fixed_spread | best PnL, min 20 fills | queue-aware | 61 | −0.008861 | −761.23 | +0.001940 | −0.003202 | −0.002485 | +0.002890 | −0.008004 | −0.008861 to −0.007268 |
+    | fixed_spread | best PnL, min 20 fills | optimistic | 84 | −0.009120 | −783.50 | +0.002735 | −0.004135 | −0.003220 | +0.002327 | −0.006826 | −0.009421 to −0.007848 |
+    | mark_iv_follower | best PnL | queue-aware | 44 | −0.001508 | −129.60 | +0.000815 | −0.002111 | −0.001535 | +0.007119 | −0.005797 | −0.001837 to −0.001329 |
+    | mark_iv_follower | best PnL | optimistic | 103 | −0.003390 | −291.25 | +0.003555 | −0.004538 | −0.001585 | +0.001348 | −0.002171 | −0.003390 to −0.000133 |
+    | inventory_skew | best PnL | queue-aware | 130 | −0.009940 | −854.00 | +0.002995 | −0.004737 | −0.003685 | +0.018314 | −0.022827 | −0.009944 to −0.008486 |
+    | inventory_skew | best PnL | optimistic | 210 | −0.017725 | −1522.80 | +0.005740 | −0.007954 | −0.003975 | +0.026688 | −0.038224 | −0.018000 to −0.017248 |
+    | join_best | best PnL | queue-aware | 3 | −0.001004 | −86.29 | +0.000350 | −0.000225 | −0.000150 | −0.000897 | −0.000083 | −0.001005 to −0.000665 |
+    | join_best | best PnL | optimistic | 26 | −0.002743 | −235.68 | +0.003505 | −0.001686 | −0.000180 | −0.002831 | −0.001552 | −0.004170 to −0.002578 |
+    | join_best | best PnL, min 20 fills | queue-aware | 68 | −0.003271 | −280.98 | +0.001975 | −0.002653 | −0.001930 | +0.009314 | −0.009976 | −0.003573 to −0.001539 |
+    | join_best | best PnL, min 20 fills | optimistic | 293 | −0.009900 | −850.55 | +0.010925 | −0.011363 | −0.003130 | +0.020881 | −0.027213 | −0.011150 to −0.009233 |
+
+    - 9 of the 96 rows are positive, all the same account (fixed_spread, 6 vp) with 6–7 fills queue-aware (8 rows) or 15 fills optimistic at 250 ms (1 row). Too few fills to mean anything.
+    - Out of sample the one in-sample winner did not hold: mark_iv_follower made +0.000931 BTC on the tuning days and lost 0.001508 on the report days.
+    - Latency from 10 to 250 ms moves results by a fill or two, with no consistent direction. The feed's own delay (hundreds of ms) is much larger than the network leg being swept.
+    - Optimistic fills are 1.4 to 8.7 times the queue-aware count and lose more in all 6 accounts at the lowest latency: more fills at a loss per fill.
+  - Speed: 154 s per recorded day with 16 accounts (the hedger run on its own: 768 s for 5 days, gunzip included; optimized build, M2 Air). The SPEC 7.10 target is 300 s.
+  - **Review fixes (2026-10-07), all applied.** None changes a result: all 27 runs (10 tuning, 17 report) were run again with the final engine into a scratch folder and match the saved ones in all 831 files. The report window was therefore replayed a second time, with the same frozen parameters and identical output; the tables are unchanged.
+    - The time-based hedger no longer trades before its first interval boundary (in the runs its first look was at the window's start with zero delta, so nothing was traded there anyway).
+    - A hedge order's limit is rounded to the tick towards the best price, so it never allows more than `hedge_slippage`; before, it could allow up to one tick more.
+    - A hedge order whose answer never arrives is given up on after 5 s plus two round trips, instead of blocking further hedges; `summary.json` reports `orders_timed_out` only if it happened.
+    - `run_grid.py` reuses a finished run only if the `config.json` the engine wrote records the same settings (fill model, latency, window, every account's parameters) and the run was made by the same engine build (SHA-256 of the binary, kept in `runs/m5/logs/*.engine`). A rebuilt engine runs everything again.
+    - Fills of a hedge order that was given up on are counted in the hedging statistics, not only in the position.
+  - The first tuning attempt reported all nine runs as failed although they had finished: the engine stops reading at the end of the trading window and the feeding `gunzip` exits on a broken pipe, which the runner counted as a failure. Fixed in the runner (a run is judged by the engine's exit code and by reaching the window's end); the finished runs were reused, not repeated. No report-window run had been made at that point.
 
 **Done when:** each strategy and hedger follows its core rule in scenario checks, the speed target holds, the full grid runs on the 5-day report window with parameters fixed beforehand, and both tables are produced with complete conditions on every row.
 

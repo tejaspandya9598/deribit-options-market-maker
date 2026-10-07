@@ -47,6 +47,8 @@
 #include "event_loop.hpp"
 #include "exchange_sim.hpp"
 #include "fees.hpp"
+#include "hedge_runner.hpp"
+#include "hedger.hpp"
 #include "input.hpp"
 #include "parse.hpp"
 #include "quoter.hpp"
@@ -135,12 +137,15 @@ struct Run {
     std::unique_ptr<RunOutput> out;
     std::unique_ptr<ExchangeSim> sim;
     std::vector<std::unique_ptr<Quoter>> quoters;
+    std::vector<std::unique_ptr<HedgeRunner>> hedgers;  // one per account; null for "none"
+    std::vector<oj> hedger_params;                      // as in use, defaults included
     oj shared;  // conditions every account of the run has in common
 };
 
 std::unique_ptr<Run> start_run(EventLoop& loop, const char* config_path, const char* run_dir,
                                const char* fees_path, const std::string& latency_source) {
     register_builtin_strategies();
+    register_builtin_hedgers();
     auto run = std::make_unique<Run>();
     run->cfg = RunConfig::load(config_path);
     run->fees = FeeSchedule::load(fees_path);
@@ -155,16 +160,29 @@ std::unique_ptr<Run> start_run(EventLoop& loop, const char* config_path, const c
     for (size_t i = 0; i < run->cfg.accounts.size(); ++i) {
         const AccountConfig& a = run->cfg.accounts[i];
         auto q = std::make_unique<Quoter>(loop, static_cast<std::uint32_t>(i),
-                                          make_strategy(a.strategy, a.params), a.quoter);
+                                          make_strategy(a.strategy, a.params), a.quoter, &run->fees);
         loop.add_market_observer(q.get());
         loop.add_order_observer(q.get());
+        // Every hedger is built (so its parameters are checked and recorded); "none" gets no
+        // runner because it never trades.
+        auto hedger = make_hedger(a.hedger, a.hedger_params);
+        run->hedger_params.push_back(hedger->params());
+        std::unique_ptr<HedgeRunner> h;
+        if (a.hedger != "none") {
+            h = std::make_unique<HedgeRunner>(loop, static_cast<std::uint32_t>(i), std::move(hedger),
+                                              run->fees, run->cfg.hedge);
+            loop.add_market_observer(h.get());
+            loop.add_order_observer(h.get());
+        }
         accounts.push_back({{"name", a.name},
                             {"strategy", a.strategy},
                             {"params", q->strategy().params()},
                             {"fair_value_source", q->strategy().fair_value_source()},
                             {"hedger", a.hedger},
+                            {"hedger_params", run->hedger_params.back()},
                             {"quoter", to_json(a.quoter)}});
         run->quoters.push_back(std::move(q));
+        run->hedgers.push_back(std::move(h));
     }
 
     run->shared = {
@@ -178,6 +196,10 @@ std::unique_ptr<Run> start_run(EventLoop& loop, const char* config_path, const c
                                     : oj(nullptr)},
         {"fee_schedule_date", run->fees.date_checked},
         {"fee_tier", run->fees.tier},
+        {"trade_from_utc", run->cfg.trade_from_utc.empty() ? oj(nullptr) : oj(run->cfg.trade_from_utc)},
+        {"trade_until_utc", run->cfg.trade_until_utc.empty() ? oj(nullptr) : oj(run->cfg.trade_until_utc)},
+        {"hedge_interval_ms", static_cast<double>(run->cfg.hedge.interval) / 1e6},
+        {"hedge_slippage", run->cfg.hedge.slippage},
     };
     oj config = run->shared;
     config.update(to_json(run->cfg.sim));
@@ -211,6 +233,7 @@ void finish_run(Run& run, const EventLoop& loop, const Instruments& reg) {
         cond["fair_value_source"] = q.strategy().fair_value_source();
         cond["sabr_beta"] = beta;
         cond["hedger"] = a.hedger;
+        cond["hedger_params"] = run.hedger_params[i];
         cond["quoter"] = to_json(a.quoter);
         cond["first_time_ns"] = run.out->first_time(i);
         cond["last_time_ns"] = run.out->last_time(i);
@@ -229,6 +252,16 @@ void finish_run(Run& run, const EventLoop& loop, const Instruments& reg) {
                              {"places", q.stats().places},
                              {"replaces", q.stats().replaces},
                              {"cancels", q.stats().cancels}};
+        if (const HedgeRunner* h = run.hedgers[i].get()) {
+            summary["hedging"] = {{"checks", h->stats().checks},
+                                  {"orders", h->stats().orders},
+                                  {"fills", h->stats().fills},
+                                  {"orders_not_fully_filled", h->stats().unfilled},
+                                  {"orders_rejected", h->stats().rejected}};
+            // Only when it happened: it should not, and the key's absence keeps summaries of
+            // normal runs unchanged.
+            if (h->stats().timed_out > 0) summary["hedging"]["orders_timed_out"] = h->stats().timed_out;
+        }
         run.out->write_summary(i, summary);
 
         const PnlParts& p = acc.pnl();
@@ -348,6 +381,7 @@ int main(int argc, char** argv) {
             // Fits stamped after the last market event would only push the clock (and with it
             // expiries and pnl rows) past the end of the data.
             if (run && input.main_exhausted()) break;
+            if (run && run->cfg.trade_until != 0 && loop.now() >= run->cfg.trade_until + kRunOff) break;
             if (run && timing == MdTiming::AsReceived) {
                 const auto* fit = std::get_if<SabrFit>(&e.payload);
                 if (fit != nullptr && !fit->recv_clock) {

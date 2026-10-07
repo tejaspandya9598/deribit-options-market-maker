@@ -24,11 +24,22 @@ double QuoteContext::price_btc(double iv) const {
     return pricing::to_btc(pricing::black76_price(forward, def->strike, t_years, iv, def->is_call), forward);
 }
 
+double QuoteContext::iv_of(double price_btc) const {
+    const auto r = pricing::implied_vol(price_btc * forward, forward, def->strike, t_years, def->is_call);
+    return r.status == pricing::IvStatus::Ok ? r.vol : kNaN;
+}
+
+double QuoteContext::min_edge(double fair_btc) const {
+    if (fees == nullptr || !(fee_edge_mult > 0) || !(fair_btc > 0)) return 0.0;
+    return fee_edge_mult * fees->option_fee(fair_btc, 1.0, /*maker=*/true);
+}
+
 Quote iv_spread_quote(const QuoteContext& ctx, double centre_iv, double half_spread) {
     Quote q;
     if (!std::isfinite(centre_iv) || !(centre_iv > 0)) return q;
     if (centre_iv - half_spread > 0) q.bid = ctx.price_btc(centre_iv - half_spread);
     q.ask = ctx.price_btc(centre_iv + half_spread);
+    q.fair = ctx.price_btc(centre_iv);
     return q;
 }
 
@@ -48,6 +59,8 @@ void register_strategy(const std::string& name, StrategyFactory factory) {
 void register_builtin_strategies() {
     register_strategy("fixed_spread", make_fixed_spread);
     register_strategy("mark_iv_follower", make_mark_iv_follower);
+    register_strategy("inventory_skew", make_inventory_skew);
+    register_strategy("join_best", make_join_best);
 }
 
 std::unique_ptr<Strategy> make_strategy(const std::string& name, const nlohmann::json& params) {

@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 
 #include "events.hpp"
+#include "fees.hpp"
 #include "order_book.hpp"
 
 namespace mm {
@@ -34,18 +35,32 @@ struct QuoteContext {
     double mark_iv = kNaN;      // Deribit mark IV, as a decimal (0.45 = 45 vol points)
     double position = 0;        // contracts in this option
     double account_vega = 0;    // USD per vol point, whole account
+    double max_vega = kNaN;     // the account's vega limit, same unit
+    // Realized vol of the index (annualized decimal) from an exponentially weighted average
+    // of squared returns; NaN until one half-life of data has been seen.
+    double realized_vol = kNaN;
+    // The quoter's fee floor (set by the quoter; see min_edge).
+    double fee_edge_mult = 0;
+    const FeeSchedule* fees = nullptr;
 
     // SABR fair IV (decimal): Hagan's formula with the fit's parameters at the current forward.
     // NaN without a usable fit.
     double sabr_iv() const;
     // Black-76 premium in BTC for an IV (decimal).
     double price_btc(double iv) const;
+    // IV (decimal) of a premium in BTC; NaN if no vol reproduces it.
+    double iv_of(double price_btc) const;
+    // The least distance from fair, in BTC, the quoter lets a quote rest at: fee_edge_mult
+    // times the maker fee of one contract at that price. 0 when the floor is off.
+    double min_edge(double fair_btc) const;
 };
 
 // Prices in BTC, not yet rounded: the Quoter rounds bids down and asks up to the tick.
-// An empty side means "no quote on that side".
+// An empty side means "no quote on that side". `fair` is the price the strategy centres on;
+// with it the Quoter can keep quotes at least the fee floor away (no fair, no floor).
 struct Quote {
     std::optional<double> bid, ask;
+    std::optional<double> fair;
 };
 
 class Strategy {
@@ -79,5 +94,7 @@ Quote iv_spread_quote(const QuoteContext& ctx, double centre_iv, double half_spr
 // Built-in factories (strategies/*.cpp).
 std::unique_ptr<Strategy> make_fixed_spread(const nlohmann::json& params);
 std::unique_ptr<Strategy> make_mark_iv_follower(const nlohmann::json& params);
+std::unique_ptr<Strategy> make_inventory_skew(const nlohmann::json& params);
+std::unique_ptr<Strategy> make_join_best(const nlohmann::json& params);
 
 }  // namespace mm

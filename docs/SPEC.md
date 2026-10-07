@@ -38,7 +38,8 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
   - `pnl.csv` splits PnL into spread earned, fees, option mark-to-market, hedge PnL and adverse selection (markouts). One row every 10 s (a setting), plus one at every fill and settlement; interval rows are skipped while the account is flat and unchanged.
 - **SABR fit cache** `cache/sabr/beta-<β>-recv/YYYY-MM-DD.jsonl.gz` (built by `sabr_sidecar/fit.py --clock recv`; without `-recv` and `--clock`, the same cache cut on exchange timestamps, used for the β report and for `--md-timing exchange`): fitted parameters per expiry over time, computed once per recorded day and β and reused by every replay. One JSON object per line, sorted by `fit_time_ns + compute_ns` (the time the engine may use it): `{"fit_time_ns", "compute_ns", "expiry_ms", "beta", "alpha", "rho", "nu", "forward", "rmse_vol"}`, plus diagnostics the engine ignores: `n_quotes`, `t_years`, `mark_err_med_vp`, `mark_err_max_vp` (error vs Deribit mark IV over the fitted strikes, in vol points), `nu_max` (vol-of-vol bound, 5/√T), `at_bound`.
 - **Book checkpoints** `cache/books/YYYY-MM-DD/HH.jsonl`: written by `mm_engine --checkpoint-dir cache/books` at each UTC hour. Each holds the latest recorded instrument lists plus one synthetic snapshot per valid book (real `change_id`), so a replay can start at any hour instead of at the recording's first snapshot.
-- **Results table:** built by a Python script from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model (with its trade-through setting), market-data timing, latency, fee schedule date, fair-value source.
+- **Frozen parameters** `config/m5_params.json`: written by `analysis/run_grid.py tune` from the tuning window; the report-window runs read it and nothing else.
+- **Results table:** built by a Python script (`analysis/results.py`, into `runs/m5/results/`) from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model (with its trade-through setting), market-data timing, latency, fee schedule date, fair-value source.
 - **Local dashboard** at `http://localhost:<port>`, with four tabs:
   - **Live:** current books, each account's quotes, fills, positions, Greeks (delta, vega, gamma) and PnL.
   - **Replay:** the same screen driven by a recorded day at 1x–100x speed.
@@ -100,10 +101,14 @@ Fills, queues and accounting run on exchange timestamps in both modes. Every res
 
 **Strategies.** Each built-in strategy sets bid/ask quotes on a chosen set of near-money options, in small size. All are rounded to the tick.
 - *Fixed spread:* SABR fair IV ± a fixed half-spread in vol points.
-- *Inventory-skewed (Avellaneda–Stoikov style):* the quote centre moves against our vega inventory (`centre = fair IV − k · vega_position`), and the spread widens with inventory and recent volatility.
-- *Join-the-best with edge filter:* quote at the current best bid/ask, but only when that price is at least X vol points on the right side of SABR fair value. Otherwise stay out.
+- *Inventory-skewed (Avellaneda–Stoikov style):* the quote centre moves against our vega inventory (`centre = fair IV − k · vega_position`, the account's vega), and the half-spread widens with inventory (by a set amount at the vega limit) and with recent volatility (when the index's realized vol, an exponentially weighted average, is above fair IV).
+- *Join-the-best with edge filter:* quote at the current best bid/ask, each side only when that price is at least X vol points on the right side of SABR fair value. Otherwise stay out on that side.
 - *Mark-IV follower:* fixed spread centred on Deribit mark IV instead of SABR, which turns the fair-value comparison into a strategy choice.
 - *Shared risk limits:* max contracts per option and max total vega. Quotes are pulled on stale data and in the last hour before expiry.
+- *Shared quote rules* (settings, the same for every strategy; added after the M4 results):
+  - *fee floor:* no quote closer to the strategy's fair price than a set multiple of the maker fee;
+  - *re-quote band:* a resting quote is left alone, keeping its queue place, while it is within N ticks of the wanted price and still outside the fee floor;
+  - *near expiry:* inside a set time before expiry only the side that reduces the position is quoted.
 
 **Running several strategies.** Each selected strategy runs in its own paper account with its own hedger, on the same market data. Accounts don't compete for fills, which is a stated limit. One engine run can hold many accounts, e.g. all 4 strategies × 4 hedgers = 16 accounts in one pass.
 
@@ -111,7 +116,11 @@ Fills, queues and accounting run on exchange timestamps in both modes. Every res
 - *No hedge:* carry the delta, and report how much of the PnL it explains.
 - *Fixed band:* hedge back to zero when delta leaves ±X BTC.
 - *Time-based:* hedge to zero every N minutes.
-- *Whalley–Wilmott:* the band width comes from gamma, the fee rate and a risk-aversion setting. It is wider when trading costs more, narrower when you care more about risk.
+- *Whalley–Wilmott:* the band width comes from gamma, the fee rate and a risk-aversion setting: half-width in BTC of delta = `(1.5 · fee rate · S · gamma² / risk aversion)^(1/3)`, with a small floor. Outside the band it trades back to the band's edge, not to zero. It is wider when trading costs more, narrower when you care more about risk.
+
+A hedger sees the same delayed view as the strategy: delta from the fills reported so far and the view's tickers (options: Black-76 delta minus the premium in BTC, which is the delta of BTC-settled PnL; perpetual: USD position / price). It checks once a second, sends one immediate-or-cancel order at a time in whole 10 USD lots, and lets it fill up to 0.1% past the visible best price.
+
+**Trading window.** A run can be limited to a window: nothing is quoted or hedged before its start (the books warm up first), quotes are cancelled at its end, and the run stops 70 s later so the last fills get their markouts. Positions still open are marked to mid there, not closed.
 
 **Our orders.** Quotes are post-only: one that would cross the recorded book when it arrives is rejected, never filled as a taker. A replace is a cancel plus a new order; it keeps its queue place only if the price is unchanged and the size no larger. Hedge orders are immediate-or-cancel takers that walk the recorded book. An order can only be filled by a trade stamped inside its own lifetime (from its arrival to its cancel), whatever order the messages arrive in.
 
