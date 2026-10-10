@@ -40,10 +40,12 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
 - **Book checkpoints** `cache/books/YYYY-MM-DD/HH.jsonl`: written by `mm_engine --checkpoint-dir cache/books` at each UTC hour. Each holds the latest recorded instrument lists plus one synthetic snapshot per valid book (real `change_id`), so a replay can start at any hour instead of at the recording's first snapshot.
 - **Frozen parameters** `config/m5_params.json`: written by `analysis/run_grid.py tune` from the tuning window; the report-window runs read it and nothing else.
 - **Results table:** built by a Python script (`analysis/results.py`, into `runs/m5/results/`) from all run summaries. Every row carries its conditions: instrument set, dates, strategy + parameters, hedger, fill model (with its trade-through setting), market-data timing, latency, fee schedule date, fair-value source.
-- **Local dashboard** at `http://localhost:<port>`, with four tabs:
+- **Engine state stream** (`mm_engine --state-interval-ms N`): one JSON line per N ms of exchange time on stdout, with each account's quotes, new fills, positions, Greeks and PnL parts, plus the index and the top of book of every option quoted or held. This is what the dashboard shows. It is the exchange-side state, the same figures a `pnl.csv` row holds, and it is read-only: a run writes the same files with or without it.
+- **Session folders** `runs/live/<start time>/` and `runs/replay/<start time>/`: the request, the feed's and the engine's logs, and a normal run folder (`run/`) written when the session ends.
+- **Local dashboard** at `http://127.0.0.1:<port>` (page) with a websocket on the next port, both bound to this machine only, with four tabs:
   - **Live:** current books, each account's quotes, fills, positions, Greeks (delta, vega, gamma) and PnL.
   - **Replay:** the same screen driven by a recorded day at 1x–100x speed.
-  - **Strategies:** pick one or more strategies and set their parameters, pick a hedger for each, pick fill model and latency, then start a session.
+  - **Strategies:** pick one or more strategies and set their parameters, pick a hedger for each, pick fill model and latency, then start a session (live, or a replay of the day and speed set on the Replay tab).
   - **Results:** the results table and charts.
 
 ## 5. In scope / out of scope
@@ -76,11 +78,17 @@ All market data comes from Deribit's public websocket API (`wss://www.deribit.co
 ## 6. Key methods
 **Event loop.** The engine reads JSON lines from stdin, so replay is `gunzip -c ... | engine --fits cache/sabr/DAY.jsonl.gz` and live is `python live/feed.py | engine`. All logic uses exchange timestamps. A strategy never sees an event before `event_time + latency`, and its orders reach the "exchange" after a further `latency`. This rules out look-ahead by design.
 
+**Order of delivery.** Whatever the timing mode, one instrument's book messages reach the strategy view in the order they arrived, and so do its tickers, even when a later message carries an older timestamp (it happens). A book is a chain of changes; delivering it by timestamp would break the chain.
+
 **Market-data timing.** The public 100ms feed delivers events well after their exchange timestamp (option tickers a median 0.6 s later in our recording). `--md-timing` sets what a strategy sees:
 - `received` (default): each event when the recorder actually got it. The recorded receive time already contains our network latency (lowest probe round trip / 2); that part is replaced by the configured latency, so the sweep still applies: `max(event_time, receive_time − recorded latency) + latency`. Assumes the recorder's clock and the exchange's are in step.
 - `exchange`: `event_time + latency`, a feed with no delay of its own. A best case, reported as such.
 
 Fills, queues and accounting run on exchange timestamps in both modes. Every results row names the mode.
+
+**Live sessions.** The engine reads `live/feed.py` (the recorder's connection code, writing to a pipe instead of files) as it arrives, in `exchange` timing with zero market-data latency: a strategy sees each event the moment it arrives, since that is when we really had it. Its orders are delayed by the lowest one-way latency measured during the recording. Fills use the same models as in replay, against the live public book and trades.
+
+**Replay sessions.** `live/replay.py` plays a recorded day into the same pipe, paced by the recorded receive times at 1x–100x; the speed can change while it runs. The engine gets exactly the recorded lines, with the settings of the batch runs (`received` timing, that day's fit cache), so the result does not depend on the speed.
 
 **Order book.** The book is rebuilt from the snapshot plus changes. If `prev_change_id` doesn't match, the instrument is marked stale and we stop quoting it until the next snapshot. Quotes are also pulled if an instrument sees no update for N seconds.
 
@@ -96,7 +104,7 @@ Fills, queues and accounting run on exchange timestamps in both modes. Every res
 - Each fit only uses data up to its own time: tickers received by then (`--clock recv`, for `--md-timing received`) or stamped by then (`--clock exchange`). Its result reaches the engine at `fit_time + measured fit compute time`, never earlier; in `received` mode it is delayed further by `latency − recorded latency` when that is positive, since its inputs would have arrived that much later. The engine refuses an exchange-clock cache in `received` mode.
 - Between fits, C++ re-evaluates Hagan's formula (a port of `sabr/model.py`'s `hagan_lognormal_vol`) as the forward moves.
 - β is fixed. Both 0.5 and 1.0 are tried on recorded data, and the one with lower fit error is chosen and documented.
-- For replay, fits are computed once per day and cached. For live, the sidecar feeds them straight into the engine's input.
+- For replay, fits are computed once per day and cached. For live, `live/feed.py` computes them in-process with the same code and writes them into the engine's input next to the market data (exchange clock: a fit at time t uses the tickers stamped up to t that have arrived).
 - Fit error against Deribit mark IV is reported.
 
 **Strategies.** Each built-in strategy sets bid/ask quotes on a chosen set of near-money options, in small size. All are rounded to the tick.
@@ -132,7 +140,7 @@ A hedger sees the same delayed view as the strategy: delta from the fills report
 
 **Latency.** This is the network leg only; the feed's own delay comes from the market-data timing above. The default is the lowest measured one-way latency from the recorder's probe (best case). The sweep also covers 10 / 25 / 50 / 75 / 100 / 250 ms and the measured median, so results show how much they depend on speed.
 
-**Accounting.** Each account tracks cash in BTC and positions marked to mid (the ticker's mark price when the book is one-sided or invalid), applying fees on every fill. At expiry, options settle at the Deribit delivery price (the `delivery_price` on the ticker sent after expiry; if it never arrives, the last `estimated_delivery_price`) minus the delivery fee. PnL is split into parts that sum to the total:
+**Accounting.** Each account tracks cash in BTC and positions marked to mid (the ticker's mark price when the book is one-sided or invalid, a mark price of zero included, which is how Deribit marks options it prices at nothing; the last value the market data gave when it gives neither), applying fees on every fill. At expiry, options settle at the Deribit delivery price (the `delivery_price` on the ticker sent after expiry; if it never arrives, the last `estimated_delivery_price`) minus the delivery fee. PnL is split into parts that sum to the total:
 - *spread:* fill price vs mid at the fill (the mid at the trade's own timestamp, also when the trade print arrives late);
 - *fees:* trading and delivery fees;
 - *adverse selection:* the mid's move in the first 60 s after each fill;

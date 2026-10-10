@@ -60,7 +60,7 @@
         "requote_band_ticks": 1,
         "reduce_only_before_expiry_s": 3600
       },
-      "in_sample_pnl_btc": -0.0007508564146481917,
+      "in_sample_pnl_btc": -0.0007508564146481913,
       "in_sample_maker_fills": 41,
       "sets_tried": 32,
       "active": null
@@ -101,40 +101,40 @@
       "pnl_btc": {
         "fixed_spread": -0.0006637595839828846,
         "mark_iv_follower": 0.0016166117000107763,
-        "inventory_skew": 0.0005620615420399023,
+        "inventory_skew": 0.0005620615420399027,
         "join_best": 0.0
       },
-      "pnl_btc_sum": 0.001514913658067794
+      "pnl_btc_sum": 0.0015149136580677944
     },
     {
       "risk_aversion_per_usd": 0.001,
       "pnl_btc": {
         "fixed_spread": -0.00017908719366925628,
         "mark_iv_follower": 0.0009306269147891689,
-        "inventory_skew": -0.0007508564146481917,
+        "inventory_skew": -0.0007508564146481913,
         "join_best": 0.0
       },
-      "pnl_btc_sum": 6.833064717209599e-07
+      "pnl_btc_sum": 6.833064717213936e-07
     },
     {
       "risk_aversion_per_usd": 0.01,
       "pnl_btc": {
         "fixed_spread": 1.4283230876751879e-05,
         "mark_iv_follower": 0.000634846082780655,
-        "inventory_skew": -0.0011463322693265905,
+        "inventory_skew": -0.00114633226932659,
         "join_best": 0.0
       },
-      "pnl_btc_sum": -0.0004972029556691835
+      "pnl_btc_sum": -0.0004972029556691831
     },
     {
       "risk_aversion_per_usd": 0.1,
       "pnl_btc": {
         "fixed_spread": 6.756977645319554e-05,
         "mark_iv_follower": 0.000344282117042895,
-        "inventory_skew": -0.0013299004677375086,
+        "inventory_skew": -0.0013299004677375082,
         "join_best": 0.0
       },
-      "pnl_btc_sum": -0.0009180485742414181
+      "pnl_btc_sum": -0.0009180485742414176
     }
   ],
   "fixed_hedgers": {

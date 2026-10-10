@@ -66,6 +66,12 @@ inline constexpr Nanos kMaxLatency = 60 * kSec;
 //                 inputs would have arrived that much later); never earlier.
 //                 This treats the recorder's clock and the exchange's as in step.
 // Events without a receive time fall back to exchange time + md_latency.
+//
+// In both modes one instrument's book messages reach the view in the order they arrived, and
+// so do its tickers: a message is never delivered before an earlier one of the same instrument
+// and channel, even when its own stamp is older (stamps do go backwards in the feed). A book
+// is a chain of changes, so delivering it by stamp instead would break the chain and leave the
+// view without that book until the next snapshot.
 enum class MdTiming : std::uint8_t { ExchangeTime, AsReceived };
 
 struct LoopConfig {
@@ -83,6 +89,7 @@ struct LoopStats {
     std::int64_t events = 0, books = 0, snapshots = 0, gaps = 0, no_snapshot = 0;
     std::int64_t trades = 0, tickers = 0, index = 0, fits = 0, defs = 0, recorder = 0;
     std::int64_t late_events = 0;  // exchange time behind the clock (cross-channel reordering)
+    std::int64_t view_gaps = 0;    // book messages the strategy view could not chain
     // How far behind the clock late events are, all events and trades alone (fills depend on
     // the trades).
     std::int64_t late_trades = 0;
@@ -119,6 +126,8 @@ public:
 private:
     void release_until(Nanos t);
     void count(const Event& e, ApplyResult r);
+    // Latest view release time given to this instrument on one channel; raises `release` to it.
+    static Nanos in_arrival_order(std::vector<Nanos>& last, InstrumentId id, Nanos release);
 
     LoopConfig cfg_;
     Nanos now_ = 0;
@@ -127,6 +136,7 @@ private:
     DelayQueue<Event> md_q_;
     DelayQueue<OrderRequest> order_q_;
     DelayQueue<OrderUpdate> update_q_;
+    std::vector<Nanos> book_release_, ticker_release_;  // by instrument
     std::vector<MarketObserver*> market_obs_;
     std::vector<ExchangeObserver*> exch_obs_;
     std::vector<OrderObserver*> order_obs_;

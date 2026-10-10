@@ -37,6 +37,7 @@ add_library(mm_core STATIC
   engine/src/quoter.cpp
   engine/src/run_config.cpp
   engine/src/run_output.cpp
+  engine/src/state_out.cpp
   engine/src/strategy.cpp
   engine/src/strategies/fixed_spread.cpp
   engine/src/strategies/inventory_skew.cpp

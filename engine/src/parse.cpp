@@ -81,6 +81,12 @@ void Parser::parse_line(std::string_view line, std::vector<Event>& out) {
         return;
     }
     try {
+        // A SABR fit line in the market stream (live: the sidecar writes into the same pipe).
+        if (rec.contains("fit_time_ns")) {
+            Event e;
+            if (parse_fit_line(line, e)) out.push_back(std::move(e));
+            return;
+        }
         Nanos recv_ns = rec.at("recv_ns").get<Nanos>();
 
         if (auto ev = rec.find("event"); ev != rec.end()) {

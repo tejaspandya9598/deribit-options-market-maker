@@ -15,7 +15,8 @@ class Parser {
 public:
     explicit Parser(Instruments& reg) : reg_(reg) {}
 
-    // One data/raw line: {"recv_ns":..,"msg":{...}} or {"recv_ns":..,"event":{...}}.
+    // One data/raw line: {"recv_ns":..,"msg":{...}} or {"recv_ns":..,"event":{...}}, or a
+    // fit-cache line (see parse_fit_line), which a live feed mixes into the same stream.
     // Appends zero or more events (a trades message can hold several trades). Malformed lines
     // are counted and skipped; they never stop a run.
     void parse_line(std::string_view line, std::vector<Event>& out);

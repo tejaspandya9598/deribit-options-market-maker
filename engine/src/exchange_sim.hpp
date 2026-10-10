@@ -92,13 +92,28 @@ public:
     const SimConfig& config() const { return cfg_; }
     // Our orders on one instrument, including cancelled ones still inside late_window.
     const std::vector<Resting>& resting(InstrumentId id) const;
+    // Instrument ids below this may have orders (for walking resting()).
+    size_t order_slots() const { return orders_.size(); }
+    // One account's figures right now: marks every open position at the current unit value,
+    // then reads equity, PnL parts and Greeks (what a pnl row holds). Changes the account's
+    // marks, so only the run's own pnl rows use it.
+    PnlRow snapshot(size_t account, const MarketState& exch, Nanos time);
+    // The same figures without touching anything: what snapshot() would return, computed on
+    // the side. For observers (the dashboard's state stream), so that watching a run cannot
+    // change its output.
+    PnlRow peek(size_t account, const MarketState& exch, Nanos time) const;
+    // The same as unit_value(), for const callers.
+    double peek_value(InstrumentId id, const MarketState& exch) const;
     // Settlements by price source: Deribit's final delivery_price, or (if that ticker never
     // came within settle_wait) the last estimated_delivery_price / index before expiry.
     std::int64_t settled_final() const { return settled_final_; }
     std::int64_t settled_estimate() const { return settled_estimate_; }
 
     // Unit value (see account.hpp) from the exchange-side state: book mid if the book is valid
-    // and two-sided, else the ticker's mark price, else the last value; frozen at expiry.
+    // and two-sided, else the ticker's mark price (0 counts for an option: it is worthless),
+    // else the last value the market data gave; frozen at expiry. It depends only on the events
+    // applied so far, never on when or how often it is asked, so marks do not depend on the pnl
+    // row spacing or on who is watching.
     double unit_value(InstrumentId id, const MarketState& exch);
 
 private:
@@ -134,6 +149,8 @@ private:
     std::vector<Resting>& orders(InstrumentId id);
     void advance(Nanos now, const MarketState& exch);
     void purge(InstrumentId id, Nanos now);
+    // After a book or ticker event: remember the instrument's value if the state gives one.
+    void hold(InstrumentId id, const MarketState& exch);
     bool has_orders(InstrumentId id) const;
     // Mid history, kept only for instruments we have orders on. note_book / note_mark record
     // the channel's current value at its own latest timestamp; mid_at returns the unit value
@@ -160,6 +177,8 @@ private:
     void settle(InstrumentId id, double delivery_price, bool final_price, const MarketState& exch,
                 Nanos now);
     void write_row(size_t account, const MarketState& exch, Nanos time, bool force);
+    void add_greeks(PnlRow& row, InstrumentId id, double qty, double u, const MarketState& exch,
+                    Nanos time) const;
 
     EventLoop& loop_;
     const FeeSchedule& fees_;

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deribit options market maker (paper)</title>
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Deribit BTC options market maker <span class="tag">paper trading only</span></h1>
+  <div id="status">
+    <span id="status-text">connecting…</span>
+    <span id="clock"></span>
+    <button id="stop" hidden>Stop session</button>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="live" class="on">Live</button>
+  <button data-tab="replay">Replay</button>
+  <button data-tab="strategies">Strategies</button>
+  <button data-tab="results">Results</button>
+</nav>
+<p id="error" class="error" hidden></p>
+
+<section id="tab-live">
+  <div class="bar">
+    <button id="start-live" class="primary">Start live session</button>
+    <span class="hint">Public Deribit feed, simulated fills. Uses the accounts set on the Strategies tab.</span>
+  </div>
+  <div class="view-slot"></div>
+</section>
+
+<section id="tab-replay" hidden>
+  <div class="bar">
+    <label>Day <select id="replay-day"></select></label>
+    <label>Speed <input id="replay-speed" type="range" min="1" max="100" step="1" value="20">
+      <output id="replay-speed-out">20x</output></label>
+    <button id="start-replay" class="primary">Start replay</button>
+    <span class="hint">A recorded day, paced by its receive times. Speed can be changed while it runs.</span>
+  </div>
+  <div class="view-slot"></div>
+</section>
+
+<section id="tab-strategies" hidden>
+  <div class="bar">
+    <label>Fill model <select id="fill-model"></select></label>
+    <label>Latency ms <input id="latency" type="number" min="0" step="any" placeholder="measured"></label>
+    <button id="add-account">Add account</button>
+    <button id="load-presets">Load the tuned set (4 strategies × 4 hedgers)</button>
+    <span class="hint" id="account-count"></span>
+  </div>
+  <p class="hint">Each row is one paper account: a strategy with its parameters, shared quote rules, and a hedger.
+    All accounts see the same market and do not compete for fills.</p>
+  <table id="accounts-editor">
+    <thead><tr><th>#</th><th>Strategy</th><th>Strategy parameters</th><th>Quote rules</th><th>Hedger</th><th>Hedger parameters</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="bar start">
+    <button id="start-live-here" class="primary">Start live session</button>
+    <button id="start-replay-here" class="primary">Start replay</button>
+    <span class="hint" id="start-note"></span>
+  </div>
+</section>
+
+<section id="tab-results" hidden>
+  <p class="hint">Results from the 5-day report window (2026-09-30 21:42:41 → 2026-10-05 21:42:41 UTC), after fees,
+    with parameters fixed on the 2 days before it. The tuning table is in-sample and not a result.
+    Every row carries its conditions; scroll right for all of them.</p>
+  <h2>PnL over the report window, hedger run (BTC)</h2>
+  <div id="curves" class="chart"></div>
+  <p class="hint" id="curves-note"></p>
+  <div class="bar">
+    <label>Table <select id="results-table"></select></label>
+    <label>Filter <input id="results-filter" type="search" placeholder="e.g. join_best queue_aware"></label>
+    <span class="hint" id="results-count"></span>
+  </div>
+  <div class="scroll"><table id="results"><thead></thead><tbody></tbody></table></div>
+</section>
+
+<!-- One session view; shown under whichever of Live / Replay matches the running session. -->
+<template id="view-template">
+  <div id="view">
+    <h2>PnL per account (BTC, after fees)</h2>
+    <div id="pnl-chart" class="chart"></div>
+    <h2>Accounts <span class="hint">click a row to see its quotes and positions</span></h2>
+    <div class="scroll"><table id="accounts">
+      <thead><tr><th></th><th>Account</th><th>PnL</th><th>Spread</th><th>Fees</th><th>Adverse 60s</th><th>Option MTM</th>
+        <th>Hedge</th><th>Delta BTC</th><th>Gamma</th><th>Vega $/vp</th><th>Fills</th><th>Quotes</th><th>Positions</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="cols">
+      <div><h2 id="quotes-title">Quotes</h2>
+        <div class="scroll tall"><table id="quotes">
+          <thead><tr><th>Option</th><th>Our bid</th><th>Book bid</th><th>Book ask</th><th>Our ask</th><th>Mark IV</th></tr></thead>
+          <tbody></tbody></table></div></div>
+      <div><h2>Positions</h2>
+        <div class="scroll tall"><table id="positions">
+          <thead><tr><th>Instrument</th><th>Quantity</th><th>Mark</th></tr></thead><tbody></tbody></table></div></div>
+      <div><h2>Fills <span class="hint">newest first, all accounts</span></h2>
+        <div class="scroll tall"><table id="fills">
+          <thead><tr><th>UTC</th><th>Account</th><th>Instrument</th><th>Side</th><th>Price</th><th>Amount</th><th></th></tr></thead>
+          <tbody></tbody></table></div></div>
+    </div>
+  </div>
+</template>
+
+<script src="vendor/uPlot.iife.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

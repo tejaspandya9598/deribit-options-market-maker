@@ -23,6 +23,8 @@
 //   --run-dir DIR          where config.json and each account's fills.csv / pnl.csv /
 //                          summary.json go (e.g. runs/<run_id>)
 //   --fees PATH            fee schedule (default config/fees.json)
+//   --state-interval-ms X  with --config: write the run's state to stdout as JSON lines, one
+//                          per X ms of exchange time (see state_out.hpp); for the dashboard
 // Stats go to stderr.
 #include <chrono>
 #include <cmath>
@@ -54,6 +56,7 @@
 #include "quoter.hpp"
 #include "run_config.hpp"
 #include "run_output.hpp"
+#include "state_out.hpp"
 #include "strategy.hpp"
 #include "tob_dump.hpp"
 
@@ -139,6 +142,8 @@ struct Run {
     std::vector<std::unique_ptr<Quoter>> quoters;
     std::vector<std::unique_ptr<HedgeRunner>> hedgers;  // one per account; null for "none"
     std::vector<oj> hedger_params;                      // as in use, defaults included
+    std::unique_ptr<StateWriter> state;                 // --state-interval-ms
+    oj hello;                                           // first line of the state stream
     oj shared;  // conditions every account of the run has in common
 };
 
@@ -207,6 +212,8 @@ std::unique_ptr<Run> start_run(EventLoop& loop, const char* config_path, const c
     config["fees"] = oj::parse(run->fees.raw_json);
     config["accounts"] = std::move(accounts);
     run->out->write_config(config);
+    run->hello = config;
+    run->hello.erase("fees");
     return run;
 }
 
@@ -284,6 +291,7 @@ int main(int argc, char** argv) {
     const char* config_path = nullptr;
     const char* run_dir = nullptr;
     const char* fees_path = "config/fees.json";
+    std::optional<Nanos> state_interval;
     for (int i = 1; i < argc; ++i) {
         auto need = [&](const char* flag) {
             if (i + 1 >= argc) die(std::string(flag) + " needs a value");
@@ -304,10 +312,14 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--config")) config_path = need(argv[i]);
         else if (!std::strcmp(argv[i], "--run-dir")) run_dir = need(argv[i]);
         else if (!std::strcmp(argv[i], "--fees")) fees_path = need(argv[i]);
+        else if (!std::strcmp(argv[i], "--state-interval-ms")) state_interval = ms_arg(argv[i], need(argv[i]));
         else die(std::string("unknown option ") + argv[i]);
     }
 
     if ((config_path == nullptr) != (run_dir == nullptr)) die("--config and --run-dir go together");
+    if (state_interval && (config_path == nullptr || *state_interval <= 0)) {
+        die("--state-interval-ms needs --config and a value above 0");
+    }
 
     // The timing mode only matters to strategies; without a run nothing reads the view.
     if (config_path == nullptr) timing = MdTiming::ExchangeTime;
@@ -370,6 +382,14 @@ int main(int argc, char** argv) {
     std::unique_ptr<Run> run;
     try {
         if (config_path) run = start_run(loop, config_path, run_dir, fees_path, latency_source);
+        if (run && state_interval) {
+            run->state = std::make_unique<StateWriter>(stdout, *run->sim, reg, *state_interval);
+            loop.add_exchange_observer(run->state.get());
+            oj hello = {{"type", "hello"}};
+            hello.update(run->hello);
+            std::fprintf(stdout, "%s\n", hello.dump().c_str());
+            std::fflush(stdout);
+        }
     } catch (const std::exception& ex) {
         die(ex.what());
     }
@@ -395,6 +415,7 @@ int main(int argc, char** argv) {
         }
         loop.finish();
         if (run) finish_run(*run, loop, reg);
+        if (run && run->state) run->state->finish(loop.exchange(), loop.now());
     } catch (const std::exception& ex) {
         die(ex.what());
     }
@@ -409,11 +430,11 @@ int main(int argc, char** argv) {
                  "books %" PRId64 " (snapshots %" PRId64 ", gaps %" PRId64 ", no_snapshot %" PRId64 ")"
                  ", trades %" PRId64 ", tickers %" PRId64 ", index %" PRId64 ", fits %" PRId64
                  ", defs %" PRId64 ", recorder %" PRId64 "\n"
-                 "late events %" PRId64 ", fits out of order %" PRId64 ", checkpoints %d\n"
+                 "late events %" PRId64 ", fits out of order %" PRId64 ", checkpoints %d, view gaps %" PRId64 "\n"
                  "wall %.2f s (%.0f events/s), %s build\n",
                  main_in.lines, parser.malformed, parser.ignored, s.events, s.books, s.snapshots,
                  s.gaps, s.no_snapshot, s.trades, s.tickers, s.index, s.fits, s.defs, s.recorder,
-                 s.late_events, input.fits_out_of_order, ckpt ? ckpt->written : 0, secs,
+                 s.late_events, input.fits_out_of_order, ckpt ? ckpt->written : 0, s.view_gaps, secs,
                  secs > 0 ? s.events / secs : 0.0, kBuild);
     print_late("late events", s.late_events, s.late_hist, s.max_late);
     print_late("late trades", s.late_trades, s.late_trade_hist, s.max_late_trade);

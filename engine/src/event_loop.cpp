@@ -48,7 +48,8 @@ void EventLoop::release_until(Nanos t) {
         now_ = std::max(now_, best_release);
         if (pick == 0) {
             auto it = md_q_.pop();
-            view_.apply(it.value);
+            const ApplyResult vr = view_.apply(it.value);
+            if (vr == ApplyResult::Gap || vr == ApplyResult::NoSnapshot) ++stats_.view_gaps;
             for (auto* o : market_obs_) o->on_market(it.value, view_, now_);
         } else if (pick == 1) {
             auto it = order_q_.pop();
@@ -102,8 +103,20 @@ void EventLoop::process(Event e) {
         } else {
             release = is_fit ? e.time : e.time + cfg_.md_latency;
         }
+        if (const auto* u = std::get_if<BookUpdate>(&e.payload)) {
+            release = in_arrival_order(book_release_, u->id, release);
+        } else if (const auto* k = std::get_if<Ticker>(&e.payload)) {
+            release = in_arrival_order(ticker_release_, k->id, release);
+        }
         md_q_.push(release, seq_++, std::move(e));
     }
+}
+
+Nanos EventLoop::in_arrival_order(std::vector<Nanos>& last, InstrumentId id, Nanos release) {
+    auto i = static_cast<size_t>(id);
+    if (i >= last.size()) last.resize(i + 1, 0);
+    last[i] = std::max(last[i], release);  // equal times are delivered in push order
+    return last[i];
 }
 
 void EventLoop::finish() { release_until(std::numeric_limits<Nanos>::max()); }

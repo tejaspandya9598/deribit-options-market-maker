@@ -1,0 +1,63 @@
+/* Light and dark follow the system setting. Series colours are a fixed, validated categorical
+   palette (8 slots, assigned to accounts in order); accounts beyond the 8th are drawn in the
+   muted "other" colour. Text never takes a series colour. */
+:root {
+  --plane: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --up: #006300; --down: #d03b3b; --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --s7: #4a3aa7; --s8: #e34948; --other: #898781;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --plane: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --up: #0ca30c; --down: #e66767; --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+    --s7: #9085e9; --s8: #e66767; --other: #898781;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--plane); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 16px; flex-wrap: wrap; }
+h1 { font-size: 16px; margin: 0; font-weight: 600; }
+h2 { font-size: 13px; margin: 16px 0 6px; font-weight: 600; }
+.tag { font-size: 11px; font-weight: 500; color: var(--ink2); border: 1px solid var(--axis); border-radius: 10px; padding: 1px 8px; margin-left: 8px; }
+#status { display: flex; align-items: center; gap: 12px; color: var(--ink2); }
+#clock { font-variant-numeric: tabular-nums; color: var(--ink); }
+nav { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--grid); }
+nav button { border: 0; background: none; color: var(--ink2); padding: 8px 14px; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+nav button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+section { padding: 8px 16px 32px; }
+.bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 8px 0; }
+.hint { color: var(--ink2); font-weight: 400; font-size: 12px; }
+.error { margin: 8px 16px; padding: 8px 12px; border: 1px solid var(--down); border-radius: 6px; color: var(--ink); }
+button, select, input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 10px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+input[type=number] { width: 84px; }
+input[type=range] { padding: 0; vertical-align: middle; }
+.chart { background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; padding: 8px; min-height: 120px; }
+.scroll { overflow: auto; background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; max-height: 520px; }
+.scroll.tall { height: 300px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 4px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 500; z-index: 1; }
+th:first-child, td:first-child, td.l, th.l { text-align: left; }
+#accounts tbody tr { cursor: pointer; }
+#accounts tbody tr.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+#accounts-editor td, #accounts-editor th { text-align: left; white-space: normal; vertical-align: top; }
+#accounts-editor label { display: inline-block; margin: 0 10px 4px 0; color: var(--ink2); font-size: 12px; }
+#accounts-editor input { width: 72px; }
+.sw { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; }
+.pos { color: var(--up); } .neg { color: var(--down); }
+.cols { display: grid; grid-template-columns: 1.15fr .6fr 1.6fr; gap: 16px; }
+.cols th, .cols td { padding: 4px 7px; }
+.cols > div { min-width: 0; }
+@media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
+.u-legend { font-size: 12px; color: var(--ink2); text-align: left; }
+.u-legend .u-marker { border-radius: 2px; }
+.multiples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+.multiples > div { min-width: 0; }
+.multiples h2 { margin-top: 4px; }
+@media (max-width: 900px) { .multiples { grid-template-columns: minmax(0, 1fr); } }
+.bar.start { margin-top: 14px; }

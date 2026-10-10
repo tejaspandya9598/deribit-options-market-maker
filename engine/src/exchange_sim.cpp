@@ -27,6 +27,22 @@ double book_mid(const OrderBook* b) {
     return from_e8(b->bids().begin()->first + b->asks().begin()->first) / 2.0;
 }
 
+// An instrument's mark from the market state alone, as quoted: the mid of a valid two-sided
+// book, else the ticker's mark price, else NaN. For an option a mark price of 0 is a mark (it
+// is worthless); for the perpetual a price must be positive.
+double fresh_price(const InstrumentDef& d, const MarketState& exch) {
+    const double mid = book_mid(exch.book(d.id));
+    if (std::isfinite(mid)) return mid;
+    const Ticker* k = exch.ticker(d.id);
+    if (k == nullptr || !std::isfinite(k->mark_price)) return kNaN;
+    const bool ok = d.kind == InstrumentKind::Option ? k->mark_price >= 0 : k->mark_price > 0;
+    return ok ? k->mark_price : kNaN;
+}
+
+double to_unit(const InstrumentDef& d, double px) {
+    return d.kind == InstrumentKind::Option ? px : -1.0 / px;
+}
+
 // Value of one option contract at delivery price S, in BTC.
 double intrinsic_btc(const InstrumentDef& d, double S) {
     if (!(S > 0)) return kNaN;
@@ -66,17 +82,78 @@ const std::vector<Resting>& ExchangeSim::resting(InstrumentId id) const {
     return id >= 0 && i < orders_.size() ? orders_[i] : none;
 }
 
-double ExchangeSim::unit_value(InstrumentId id, const MarketState& exch) {
-    Instr& s = instr(id);
-    if (s.expired) return s.frozen_u;
+double ExchangeSim::peek_value(InstrumentId id, const MarketState& exch) const {
+    auto i = static_cast<size_t>(id);
+    const Instr* s = id >= 0 && i < instr_.size() ? &instr_[i] : nullptr;
+    if (s != nullptr && s->expired) return s->frozen_u;
+    const double held = s != nullptr ? s->last_u : kNaN;
     const InstrumentDef* d = exch.def(id);
-    if (d == nullptr) return s.last_u;
-    double px = book_mid(exch.book(id));
-    if (!(px > 0)) {
-        if (const Ticker* k = exch.ticker(id); k != nullptr && k->mark_price > 0) px = k->mark_price;
+    if (d == nullptr) return held;
+    const double px = fresh_price(*d, exch);
+    return std::isfinite(px) ? to_unit(*d, px) : held;
+}
+
+double ExchangeSim::unit_value(InstrumentId id, const MarketState& exch) {
+    return peek_value(id, exch);
+}
+
+void ExchangeSim::hold(InstrumentId id, const MarketState& exch) {
+    const InstrumentDef* d = exch.def(id);
+    if (d == nullptr) return;
+    const double px = fresh_price(*d, exch);
+    if (std::isfinite(px)) instr(id).last_u = to_unit(*d, px);
+}
+
+void ExchangeSim::add_greeks(PnlRow& row, InstrumentId id, double qty, double u,
+                             const MarketState& exch, Nanos time) const {
+    const InstrumentDef* d = exch.def(id);
+    if (d == nullptr) return;
+    if (d->kind != InstrumentKind::Option) {
+        row.delta += -qty * u;  // qty USD / price
+        return;
     }
-    if (px > 0) s.last_u = d->kind == InstrumentKind::Option ? px : -1.0 / px;
-    return s.last_u;
+    const Ticker* k = exch.ticker(id);
+    const double T = static_cast<double>(d->expiry - time) / static_cast<double>(kYear);
+    auto i = static_cast<size_t>(id);
+    const bool expired = i < instr_.size() && instr_[i].expired;
+    if (k == nullptr || expired || !(T > 0) || !(k->underlying_price > 0) || !(k->mark_iv > 0)) return;
+    const auto g = pricing::black76(k->underlying_price, d->strike, T, k->mark_iv / 100.0, d->is_call);
+    row.delta += qty * pricing::inverse_delta(g.delta, pricing::to_btc(g.price, k->underlying_price));
+    row.gamma += qty * g.gamma;
+    row.vega += qty * g.vega / 100.0;
+}
+
+PnlRow ExchangeSim::peek(size_t a, const MarketState& exch, Nanos time) const {
+    const Account& acc = accounts_[a];
+    PnlRow row;
+    row.pnl = acc.pnl();
+    row.equity = acc.cash();
+    const auto& pos = acc.positions();
+    for (size_t i = 0; i < pos.size(); ++i) {
+        const Account::Position& p = pos[i];
+        if (p.qty == 0 && p.young == 0) continue;
+        const auto id = static_cast<InstrumentId>(i);
+        double u = peek_value(id, exch);
+        if (!std::isfinite(u)) u = p.last_u;
+        // What Account::mark(id, u) would add to the parts, without doing it.
+        if (std::isfinite(u) && std::isfinite(p.last_u)) {
+            const double d = u - p.last_u;
+            if (p.option) {
+                row.pnl.adverse += p.young * d;
+                row.pnl.option_mtm += (p.qty - p.young) * d;
+            } else {
+                row.pnl.hedge += p.qty * d;
+            }
+        }
+        if (p.qty != 0) row.equity += p.qty * u;
+        if (std::abs(p.qty) <= kEps) continue;
+        ++row.positions;
+        add_greeks(row, id, p.qty, u, exch, time);
+    }
+    row.time = time;
+    row.cash = acc.cash();
+    row.index = exch.index_price();
+    return row;
 }
 
 void ExchangeSim::send(const OrderRequest& o, std::uint64_t id, UpdateKind kind, Reject reason,
@@ -141,7 +218,11 @@ void ExchangeSim::note_mark(InstrumentId id, const MarketState& exch, Nanos now)
     if (k == nullptr) return;
     auto i = static_cast<size_t>(id);
     if (i >= mids_.size()) mids_.resize(i + 1);
-    note(mids_[i].mark, instr(id).ticker_time, k->mark_price > 0 ? k->mark_price : kNaN, now);
+    const InstrumentDef* d = exch.def(id);
+    const bool option = d == nullptr || d->kind == InstrumentKind::Option;
+    // As in fresh_price(): 0 is a mark for an option, not for the perpetual.
+    const bool ok = std::isfinite(k->mark_price) && (option ? k->mark_price >= 0 : k->mark_price > 0);
+    note(mids_[i].mark, instr(id).ticker_time, ok ? k->mark_price : kNaN, now);
 }
 
 double ExchangeSim::mid_at(InstrumentId id, Nanos t, const MarketState& exch) {
@@ -155,8 +236,8 @@ double ExchangeSim::mid_at(InstrumentId id, Nanos t, const MarketState& exch) {
     auto i = static_cast<size_t>(id);
     if (i < mids_.size()) {
         double px = at(mids_[i].book);
-        if (!(px > 0)) px = at(mids_[i].mark);
-        if (px > 0) {
+        if (!std::isfinite(px)) px = at(mids_[i].mark);
+        if (std::isfinite(px)) {
             const InstrumentDef* d = exch.def(id);
             return d == nullptr || d->kind == InstrumentKind::Option ? px : -1.0 / px;
         }
@@ -209,7 +290,7 @@ void ExchangeSim::finish() {
     for (size_t a = 0; a < accounts_.size(); ++a) write_row(a, exch, now, true);
 }
 
-void ExchangeSim::write_row(size_t a, const MarketState& exch, Nanos time, bool force) {
+PnlRow ExchangeSim::snapshot(size_t a, const MarketState& exch, Nanos time) {
     Account& acc = accounts_[a];
     PnlRow row;
     const auto& pos = acc.positions();
@@ -220,38 +301,25 @@ void ExchangeSim::write_row(size_t a, const MarketState& exch, Nanos time, bool 
         const double qty = pos[i].qty;
         if (std::abs(qty) <= kEps) continue;
         ++row.positions;
-
-        const InstrumentDef* d = exch.def(id);
-        if (d == nullptr) continue;
-        if (d->kind != InstrumentKind::Option) {
-            row.delta += -qty * pos[i].last_u;  // qty USD / price
-            continue;
-        }
-        const Ticker* k = exch.ticker(id);
-        const double T = static_cast<double>(d->expiry - time) / static_cast<double>(kYear);
-        if (k == nullptr || instr(id).expired || !(T > 0) || !(k->underlying_price > 0) ||
-            !(k->mark_iv > 0)) {
-            continue;
-        }
-        const auto g = pricing::black76(k->underlying_price, d->strike, T, k->mark_iv / 100.0, d->is_call);
-        row.delta += qty * pricing::inverse_delta(g.delta, pricing::to_btc(g.price, k->underlying_price));
-        row.gamma += qty * g.gamma;
-        row.vega += qty * g.vega / 100.0;
+        add_greeks(row, id, qty, pos[i].last_u, exch, time);
     }
-
-    RowState& rs = rows_[a];
-    const bool flat = row.positions == 0;
-    const bool same = rs.written && rs.flat && flat && rs.cash == acc.cash();
-    if (!force && same) return;
-    rs = {true, flat, acc.cash()};
-    if (sink_ == nullptr) return;
-
     row.time = time;
     row.equity = acc.equity();
     row.cash = acc.cash();
     row.pnl = acc.pnl();
     row.index = exch.index_price();
-    sink_->pnl_row(a, row);
+    return row;
+}
+
+void ExchangeSim::write_row(size_t a, const MarketState& exch, Nanos time, bool force) {
+    const PnlRow row = snapshot(a, exch, time);
+    const Account& acc = accounts_[a];
+    RowState& rs = rows_[a];
+    const bool flat = row.positions == 0;
+    const bool same = rs.written && rs.flat && flat && rs.cash == acc.cash();
+    if (!force && same) return;
+    rs = {true, flat, acc.cash()};
+    if (sink_ != nullptr) sink_->pnl_row(a, row);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -333,10 +401,12 @@ void ExchangeSim::on_exchange(const Event& e, ApplyResult r, const MarketState& 
     if (const auto* u = std::get_if<BookUpdate>(&e.payload)) {
         started_ = true;
         on_book(*u, r, e.time, exch);
+        hold(u->id, exch);
         if (has_orders(u->id)) note_book(u->id, exch, now);
     } else if (const auto* k = std::get_if<Ticker>(&e.payload)) {
         Instr& s = instr(k->id);
         s.ticker_time = e.time;
+        hold(k->id, exch);
         // The ticker's mark price is the mark while the book is one-sided or invalid.
         if (has_orders(k->id)) note_mark(k->id, exch, now);
         if (!std::isfinite(k->est_delivery_price) && !std::isfinite(k->delivery_price)) return;

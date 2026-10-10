@@ -27,14 +27,14 @@ Conditions shared by all 156 rows:
 
 | instruments_quoted | strategy | strategy_params | fair_value_source | fee_edge_mult | requote_band_ticks | reduce_only_before_expiry_s | hedger_params | pnl_btc | fees_btc | max_drawdown_btc | maker_fills | hedge_orders | account |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003787 | -0.002348 | 0.005170 | 59 | 1096 | fixed_spread-00 |
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004078 | -0.002337 | 0.005462 | 58 | 1132 | fixed_spread-01 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003797 | -0.002348 | 0.005180 | 59 | 1096 | fixed_spread-00 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004088 | -0.002337 | 0.005472 | 58 | 1132 | fixed_spread-01 |
 | 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008206 | -0.006362 | 0.010720 | 162 | 1593 | fixed_spread-02 |
 | 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008426 | -0.006226 | 0.010751 | 158 | 1509 | fixed_spread-03 |
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003591 | -0.002326 | 0.005013 | 57 | 1181 | fixed_spread-04 |
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003871 | -0.002315 | 0.005293 | 56 | 1257 | fixed_spread-05 |
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004310 | -0.003206 | 0.005579 | 84 | 1000 | fixed_spread-06 |
-| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004321 | -0.003182 | 0.005590 | 82 | 1147 | fixed_spread-07 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003601 | -0.002326 | 0.005023 | 57 | 1181 | fixed_spread-04 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003881 | -0.002315 | 0.005303 | 56 | 1257 | fixed_spread-05 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004320 | -0.003206 | 0.005589 | 84 | 1000 | fixed_spread-06 |
+| 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.004331 | -0.003182 | 0.005600 | 82 | 1147 | fixed_spread-07 |
 | 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001831 | -0.000652 | 0.002278 | 14 | 496 | fixed_spread-08 |
 | 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 2 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001831 | -0.000652 | 0.002278 | 14 | 496 | fixed_spread-09 |
 | 130 | fixed_spread | {"half_spread_vp": 2.0} | sabr | 2 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001715 | -0.000725 | 0.002497 | 15 | 514 | fixed_spread-10 |
@@ -102,15 +102,15 @@ Conditions shared by all 156 rows:
 | 130 | inventory_skew | {"half_spread_vp": 2.0, "inventory_widen_vp": 1.0, "max_vol_widen_vp": 5.0, "skew_vp_per_100_vega": 2.0, "vol_widen": 0.25} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.0001} | +0.000562 | -0.001271 | 0.002533 | 41 | 351 | inventory_skew-ra0 |
 | 130 | inventory_skew | {"half_spread_vp": 2.0, "inventory_widen_vp": 1.0, "max_vol_widen_vp": 5.0, "skew_vp_per_100_vega": 2.0, "vol_widen": 0.25} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000751 | -0.001486 | 0.002371 | 41 | 916 | inventory_skew-ra1 |
 | 130 | inventory_skew | {"half_spread_vp": 2.0, "inventory_widen_vp": 1.0, "max_vol_widen_vp": 5.0, "skew_vp_per_100_vega": 2.0, "vol_widen": 0.25} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.01} | -0.001146 | -0.001825 | 0.001880 | 41 | 1801 | inventory_skew-ra2 |
-| 130 | inventory_skew | {"half_spread_vp": 2.0, "inventory_widen_vp": 1.0, "max_vol_widen_vp": 5.0, "skew_vp_per_100_vega": 2.0, "vol_widen": 0.25} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.1} | -0.001330 | -0.002254 | 0.002029 | 41 | 3119 | inventory_skew-ra3 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010159 | -0.005973 | 0.012307 | 141 | 1628 | join_best-00 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010135 | -0.005966 | 0.012282 | 140 | 1653 | join_best-01 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010986 | -0.008296 | 0.013100 | 221 | 1684 | join_best-02 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010745 | -0.008220 | 0.012860 | 216 | 1688 | join_best-03 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008269 | -0.003537 | 0.010057 | 79 | 1561 | join_best-04 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008313 | -0.003534 | 0.010101 | 78 | 1588 | join_best-05 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.009934 | -0.004277 | 0.011991 | 89 | 1475 | join_best-06 |
-| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.009731 | -0.004265 | 0.011788 | 88 | 1518 | join_best-07 |
+| 130 | inventory_skew | {"half_spread_vp": 2.0, "inventory_widen_vp": 1.0, "max_vol_widen_vp": 5.0, "skew_vp_per_100_vega": 2.0, "vol_widen": 0.25} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.1} | -0.001330 | -0.002254 | 0.002020 | 41 | 3119 | inventory_skew-ra3 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010149 | -0.005973 | 0.012297 | 141 | 1628 | join_best-00 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010125 | -0.005966 | 0.012272 | 140 | 1653 | join_best-01 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010996 | -0.008296 | 0.013110 | 221 | 1684 | join_best-02 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.010755 | -0.008220 | 0.012870 | 216 | 1688 | join_best-03 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008259 | -0.003537 | 0.010047 | 79 | 1561 | join_best-04 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.008303 | -0.003534 | 0.010091 | 78 | 1588 | join_best-05 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.009924 | -0.004277 | 0.011981 | 89 | 1475 | join_best-06 |
+| 130 | join_best | {"min_edge_vp": 1.0} | sabr | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.009721 | -0.004265 | 0.011778 | 88 | 1518 | join_best-07 |
 | 120 | join_best | {"min_edge_vp": 1.0} | sabr | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000330 | -0.000267 | 0.001587 | 6 | 255 | join_best-08 |
 | 120 | join_best | {"min_edge_vp": 1.0} | sabr | 2 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000330 | -0.000267 | 0.001587 | 6 | 255 | join_best-09 |
 | 120 | join_best | {"min_edge_vp": 1.0} | sabr | 2 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000330 | -0.000267 | 0.001587 | 6 | 255 | join_best-10 |
@@ -143,14 +143,14 @@ Conditions shared by all 156 rows:
 | 101 | join_best | {"min_edge_vp": 4.0} | sabr | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000000 | +0.000000 | 0.000000 | 0 | 0 | join_best-ra1 |
 | 101 | join_best | {"min_edge_vp": 4.0} | sabr | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.01} | +0.000000 | +0.000000 | 0.000000 | 0 | 0 | join_best-ra2 |
 | 101 | join_best | {"min_edge_vp": 4.0} | sabr | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.1} | +0.000000 | +0.000000 | 0.000000 | 0 | 0 | join_best-ra3 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001187 | -0.002098 | 0.003742 | 67 | 825 | mark_iv_follower-00 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001149 | -0.001896 | 0.003719 | 50 | 789 | mark_iv_follower-01 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003165 | -0.005520 | 0.004592 | 162 | 1152 | mark_iv_follower-02 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003981 | -0.005117 | 0.004945 | 141 | 1102 | mark_iv_follower-03 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001392 | -0.002059 | 0.002540 | 63 | 959 | mark_iv_follower-04 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001752 | -0.001900 | 0.002900 | 48 | 1143 | mark_iv_follower-05 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000435 | -0.003044 | 0.001789 | 95 | 976 | mark_iv_follower-06 |
-| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000256 | -0.002726 | 0.001789 | 78 | 1002 | mark_iv_follower-07 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001197 | -0.002098 | 0.003742 | 67 | 825 | mark_iv_follower-00 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001159 | -0.001896 | 0.003719 | 50 | 789 | mark_iv_follower-01 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003175 | -0.005520 | 0.004602 | 162 | 1152 | mark_iv_follower-02 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.003991 | -0.005117 | 0.004955 | 141 | 1102 | mark_iv_follower-03 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001402 | -0.002059 | 0.002540 | 63 | 959 | mark_iv_follower-04 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.001762 | -0.001900 | 0.002900 | 48 | 1143 | mark_iv_follower-05 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000425 | -0.003044 | 0.001789 | 95 | 976 | mark_iv_follower-06 |
+| 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 1 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000266 | -0.002726 | 0.001789 | 78 | 1002 | mark_iv_follower-07 |
 | 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 2 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000931 | -0.000692 | 0.000666 | 21 | 304 | mark_iv_follower-08 |
 | 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 2 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000322 | -0.000461 | 0.000666 | 11 | 249 | mark_iv_follower-09 |
 | 130 | mark_iv_follower | {"half_spread_vp": 2.0} | deribit_mark_iv | 2 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000564 | -0.000828 | 0.000740 | 21 | 98 | mark_iv_follower-10 |
@@ -169,7 +169,7 @@ Conditions shared by all 156 rows:
 | 130 | mark_iv_follower | {"half_spread_vp": 4.0} | deribit_mark_iv | 2 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000507 | -0.000469 | 0.000978 | 10 | 26 | mark_iv_follower-23 |
 | 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 0 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000090 | -0.000010 | 0.000145 | 1 | 0 | mark_iv_follower-24 |
 | 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 0 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000000 | +0.000000 | 0.000000 | 0 | 0 | mark_iv_follower-25 |
-| 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000125 | -0.000362 | 0.001149 | 6 | 399 | mark_iv_follower-26 |
+| 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 0 | 1 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000125 | -0.000362 | 0.001139 | 6 | 399 | mark_iv_follower-26 |
 | 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 0 | 1 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000626 | -0.000200 | 0.001504 | 3 | 214 | mark_iv_follower-27 |
 | 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 1 | 0 | 3600 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | -0.000090 | -0.000010 | 0.000145 | 1 | 0 | mark_iv_follower-28 |
 | 130 | mark_iv_follower | {"half_spread_vp": 6.0} | deribit_mark_iv | 1 | 0 | 14400 | {"min_band_btc": 0.005, "risk_aversion_per_usd": 0.001} | +0.000000 | +0.000000 | 0.000000 | 0 | 0 | mark_iv_follower-29 |
