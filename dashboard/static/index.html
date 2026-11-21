@@ -8,11 +8,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <h1>Deribit BTC options market maker <span class="tag">paper trading only</span></h1>
-  <div id="status">
-    <span id="status-text">connecting…</span>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <h1>Deribit BTC options market maker</h1>
+    <span class="tag">paper trading only</span>
+  </div>
+  <div class="statusbar">
+    <span id="pill" class="pill idle"><i></i><b id="status-text">connecting…</b></span>
     <span id="clock"></span>
+    <button id="theme" title="Switch between light and dark">Theme</button>
     <button id="stop" hidden>Stop session</button>
   </div>
 </header>
@@ -54,10 +59,10 @@
   </div>
   <p class="hint">Each row is one paper account: a strategy with its parameters, shared quote rules, and a hedger.
     All accounts see the same market and do not compete for fills.</p>
-  <table id="accounts-editor">
+  <div class="panel flush"><table id="accounts-editor">
     <thead><tr><th>#</th><th>Strategy</th><th>Strategy parameters</th><th>Quote rules</th><th>Hedger</th><th>Hedger parameters</th><th></th></tr></thead>
     <tbody></tbody>
-  </table>
+  </table></div>
   <div class="bar start">
     <button id="start-live-here" class="primary">Start live session</button>
     <button id="start-replay-here" class="primary">Start replay</button>
@@ -69,39 +74,92 @@
   <p class="hint">Results from the 5-day report window (2026-09-30 21:42:41 → 2026-10-05 21:42:41 UTC), after fees,
     with parameters fixed on the 2 days before it. The tuning table is in-sample and not a result.
     Every row carries its conditions; scroll right for all of them.</p>
-  <h2>PnL over the report window, hedger run (BTC)</h2>
-  <div id="curves" class="chart"></div>
-  <p class="hint" id="curves-note"></p>
+  <div class="panel">
+    <h2>PnL over the report window, hedger run <span class="hint">BTC</span></h2>
+    <div id="curves"></div>
+    <p class="hint" id="curves-note"></p>
+  </div>
   <div class="bar">
     <label>Table <select id="results-table"></select></label>
     <label>Filter <input id="results-filter" type="search" placeholder="e.g. join_best queue_aware"></label>
     <span class="hint" id="results-count"></span>
   </div>
-  <div class="scroll"><table id="results"><thead></thead><tbody></tbody></table></div>
+  <div class="scroll panel flush"><table id="results"><thead></thead><tbody></tbody></table></div>
 </section>
 
 <!-- One session view; shown under whichever of Live / Replay matches the running session. -->
 <template id="view-template">
   <div id="view">
-    <h2>PnL per account (BTC, after fees)</h2>
-    <div id="pnl-chart" class="chart"></div>
-    <h2>Accounts <span class="hint">click a row to see its quotes and positions</span></h2>
-    <div class="scroll"><table id="accounts">
-      <thead><tr><th></th><th>Account</th><th>PnL</th><th>Spread</th><th>Fees</th><th>Adverse 60s</th><th>Option MTM</th>
-        <th>Hedge</th><th>Delta BTC</th><th>Gamma</th><th>Vega $/vp</th><th>Fills</th><th>Quotes</th><th>Positions</th></tr></thead>
-      <tbody></tbody></table></div>
-    <div class="cols">
-      <div><h2 id="quotes-title">Quotes</h2>
-        <div class="scroll tall"><table id="quotes">
-          <thead><tr><th>Option</th><th>Our bid</th><th>Book bid</th><th>Book ask</th><th>Our ask</th><th>Mark IV</th></tr></thead>
-          <tbody></tbody></table></div></div>
-      <div><h2>Positions</h2>
-        <div class="scroll tall"><table id="positions">
-          <thead><tr><th>Instrument</th><th>Quantity</th><th>Mark</th></tr></thead><tbody></tbody></table></div></div>
-      <div><h2>Fills <span class="hint">newest first, all accounts</span></h2>
-        <div class="scroll tall"><table id="fills">
-          <thead><tr><th>UTC</th><th>Account</th><th>Instrument</th><th>Side</th><th>Price</th><th>Amount</th><th></th></tr></thead>
-          <tbody></tbody></table></div></div>
+    <div id="progress" hidden><div id="progress-fill"></div><span id="progress-label"></span></div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <label>Total PnL, all accounts</label>
+        <div class="big" id="k-pnl">+0.000000</div>
+        <div class="sub" id="k-pnl-sub">BTC, after fees</div>
+        <svg class="spark" id="s-pnl" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="kpi">
+        <label>BTC index</label>
+        <div class="big" id="k-index">–</div>
+        <div class="sub" id="k-index-sub">&nbsp;</div>
+        <svg class="spark" id="s-index" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="kpi">
+        <label>Fills</label>
+        <div class="big" id="k-fills">0</div>
+        <div class="sub" id="k-fills-sub">&nbsp;</div>
+      </div>
+      <div class="kpi">
+        <label>Quotes resting</label>
+        <div class="big" id="k-quotes">0</div>
+        <div class="sub" id="k-quotes-sub">&nbsp;</div>
+      </div>
+      <div class="kpi">
+        <label>Net delta, all accounts</label>
+        <div class="big" id="k-delta">0.0000</div>
+        <div class="sub" id="k-risk-sub">&nbsp;</div>
+      </div>
+    </div>
+
+    <div id="waiting" class="note" hidden></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>PnL per account <span class="hint">BTC, after fees</span></h2>
+        <div id="pnl-chart"></div>
+      </div>
+      <div class="panel">
+        <h2>Accounts <span class="hint">click one for its detail below</span></h2>
+        <div id="cards"></div>
+      </div>
+    </div>
+
+    <div class="grid3">
+      <div class="panel">
+        <h2 id="parts-title">Where the PnL comes from</h2>
+        <div id="parts"></div>
+        <h2>Positions</h2>
+        <div class="scroll short"><table id="positions">
+          <thead><tr><th>Instrument</th><th>Quantity</th><th>Mark</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="panel">
+        <h2 id="ladder-title">Quotes against the market</h2>
+        <div class="legend">
+          <span><i class="k band"></i>market bid to ask</span>
+          <span><i class="k bid"></i>our bid</span>
+          <span><i class="k ask"></i>our ask</span>
+        </div>
+        <div id="ladder" class="scroll tall"></div>
+      </div>
+      <div class="panel">
+        <h2>Volatility smile <span class="hint">Deribit mark IV by strike, options quoted or held</span></h2>
+        <div id="smile"></div>
+        <h2>Fills <span class="hint">newest first, all accounts</span></h2>
+        <div class="scroll short"><table id="fills">
+          <thead><tr><th>UTC</th><th class="l">Trade</th><th class="l">Account</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
     </div>
   </div>
 </template>

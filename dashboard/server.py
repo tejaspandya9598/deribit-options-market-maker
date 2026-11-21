@@ -257,6 +257,7 @@ class Session:
         self.names: list[str] = []
         self.history: list[deque] = []
         self.fills: deque = deque(maxlen=300)
+        self.index: deque = deque(maxlen=HISTORY_POINTS)  # (time, BTC index) per state
         self.procs: list[asyncio.subprocess.Process] = []
         self.engine: asyncio.subprocess.Process | None = None
         self.feeder: asyncio.subprocess.Process | None = None
@@ -369,6 +370,8 @@ class Session:
                 for h, a in zip(self.history, state["accounts"], strict=True):
                     h.append((state["t"] / 1e9, a["pnl"]["total"]))
                 self.fills.extend(state["fills"])
+                if state.get("index") is not None:
+                    self.index.append((state["t"] / 1e9, state["index"]))
                 self.last_state = line
             elif line.startswith('{"type":"hello"'):
                 self.hello = json.loads(line)
@@ -414,8 +417,9 @@ class Session:
         out = [json.dumps(self.info())]
         if self.history:
             series = [{"t": [p[0] for p in h], "pnl": [p[1] for p in h]} for h in self.history]
+            index = {"t": [p[0] for p in self.index], "v": [p[1] for p in self.index]}
             out.append(json.dumps({"type": "history", "names": self.names, "series": series,
-                                   "fills": list(self.fills)}))  # fmt: skip
+                                   "fills": list(self.fills), "index": index}))  # fmt: skip
         if self.last_state:
             # Its fills are already in the history above.
             out.append(json.dumps({**json.loads(self.last_state), "fills": []}))
